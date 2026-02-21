@@ -122,7 +122,6 @@ FTBDEF void ftb_str_append_str(ftb_str_t str,ftb_str_t str2);
 FTBDEF bool ftb_str_cmp_cstr(ftb_str_t str,char* cstr);
 FTBDEF bool ftb_str_cmp_str(ftb_str_t str,ftb_str_t cstr);
 
-//FTBDEF void ftb_str_append_fmt(ftb_str_t str,const char* fmt,...);
 FTBDEF void ftb_str_uppercase(ftb_str_t str);
 FTBDEF void ftb_str_lowercase(ftb_str_t str);
 
@@ -353,31 +352,24 @@ FTBDEF char* ftb_str_to_cstr
     return s;
 }
 
-FTBDEF void ftb_str_append_cstr
-(ftb_str_t str,char* cstr)
-{
-    assert(str);
-    assert(cstr);
-    u32 empty = str->capacity - str->count;
-    u32 len = strlen(cstr);
-    if(empty <= len)
-    {
-        void* ptr = calloc(1,((len / str->capacity) + 2) * str->capacity);
-        assert(ptr);
-        memcpy(ptr,(str->ptr),str->count);
-        free(str->ptr);
-        str->ptr = ptr;
-    }
-    memcpy(&str->ptr[str->count],cstr,len);
-    str->count += len;
-}
-
 /* For functions ftb_str_appends_[c]str
  * if(empty <= len) must <= and it must not change
  * using different approach will destory last zero
  * and its depend for clib functions
  */
 
+FTBDEF void ftb_str_append_cstr
+(ftb_str_t str,char* cstr)
+{
+    u32 len = strlen(cstr);
+    ftb_mem_fat_ptr_t str2 = {
+        .capacity = len,
+        .count = len,
+        .ptr = cstr,
+    };
+    ftb_str_append_str(str,&str2);
+}
+ 
 FTBDEF void ftb_str_append_str
 (ftb_str_t str1,ftb_str_t str2)
 {
@@ -387,11 +379,13 @@ FTBDEF void ftb_str_append_str
     u32 len = str2->count;
     if(empty <= len)
     {
-        void* ptr = calloc(1,((len / str1->capacity) + 2) * str1->capacity);
+        u32 new_cap = ((len / str1->capacity) + 2) * str1->capacity;
+        void* ptr = calloc(1,new_cap);
         assert(ptr);
         memcpy(ptr,str1->ptr,str1->count);
         free(str1->ptr);
         str1->ptr = ptr;
+        str1->capacity = new_cap;
     }
     memcpy(&str1->ptr[str1->count],str2->ptr,len);
     str1->count += len;
@@ -623,8 +617,6 @@ FTBDEF void ftb_str_remove_range(ftb_str_t str, u32 start, u32 len)
     str->count -= len;
     memset(&str->ptr[str->count],0,str->capacity - str->count);
 }
-
-FTBDEF void ftb_str_append_fmt(ftb_str_t str,const char* fmt,...);
 
 #endif /* FTB_FIRST_IMPLEMENTATION */
 #endif /* FTB_IMPLEMENTATION */
