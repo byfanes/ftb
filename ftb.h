@@ -81,12 +81,59 @@ do {memset((list)->items,0,(list)->capacity); (list)->count = 0; } while(0)
 #define ftb_da_free(list) \
 do { free((list)->items); (list)->items = NULL; (list)->count = 0; (list)->capacity = 0; } while(0)
 
+#define FTB_ADD_TEST(tests, fn)                     \
+    do {                                            \
+        ftb_test_t el = {                           \
+            .name = #fn,                            \
+            .func = fn,                             \
+        };                                          \
+        ftb_da_append(&(tests), el);                \
+    } while (0)
+
+#define TEST_DIRECT_ASSERT(cond,msg) \
+    do {                                          \
+        if(!(cond)) {                             \
+            fprintf(stderr,"[D/FAIL] %s:%d:%s: %s \n",__FILE__,__LINE__,__func__,msg); \
+            abort();                              \
+        }                                         \
+    } while(0)
+
+#define TEST_RESULT(x) return x
+
+#ifdef TEST_CRASH
+#define TEST_ASSERT(cond,msg) \
+    do {                                        \
+        if(!(cond)) {                           \
+            fprintf(stderr,"[FAIL] %s:%d:%s: %s \n",__FILE__,__LINE__,__func__,msg); \
+            abort();                            \
+        }                                       \
+    } while(0)
+
+#else // TEST_CRASH
+#define TEST_ASSERT(cond, msg) \
+    do {                  \
+        if (!(cond)) {    \
+            return false; \
+        }                 \
+    } while (0)
+
+#endif // TEST_CRASH
+
+#define ftb_str_write_raw(str) \
+    do { \
+        for(i32 a= 0;a < str->capacity;++a) \
+        { \
+            printf("%d ",str->ptr[a]); \
+        } \
+        printf("\n"); \
+    }while(0)
+
 typedef enum {
     fptr_func = -1,
     fptr_str_ptr = -2,
 } ftb_mem_fat_ptr_type_t;
 
-typedef struct s_ftb_mem_fat_ptr_t{
+typedef struct {
     char* ptr;
     i32 count;
     i32 capacity;
@@ -115,20 +162,26 @@ typedef enum {
     fec_end,
 } ftb_free_ec_t;
 
+typedef struct {
+    char* name;
+    bool res;
+    // TBD: time
+    bool (*func)(void);
+} ftb_test_t;
+
+typedef struct {
+    ftb_test_t* items;
+    u32 count;
+    u32 capacity;
+} ftb_tests_t;
+
 /* Every returned true is functions done succesfuly
  * Every returned false is functions has failed
  * Except for enum returns
- * Every functions muss return with true or false
  */
 
-#define ftb_str_write_raw(str) \
-    do { \
-        for(i32 a= 0;a < str->capacity;++a) \
-        { \
-            printf("%d ",str->ptr[a]); \
-        } \
-        printf("\n"); \
-    }while(0)
+FTBDEF bool ftb_tests_run(ftb_tests_t tests);
+FTBDEF void ftb_tests_report(ftb_tests_t tests);
 
 FTBDEF ftb_free_ec_t ftb_mem_free_item
 (ftb_ctx_t* ctx,ftb_mem_fat_ptr_t* ptr,void* func);
@@ -633,6 +686,31 @@ FTBDEF bool ftb_str_remove_range(ftb_str_t str, u32 start, u32 len)
     str->count -= len;
     memset(&str->ptr[str->count],0,str->capacity - str->count);
     return true;
+}
+
+FTBDEF bool ftb_tests_run
+(ftb_tests_t tests)
+{
+    u32 i = 0;
+    for(;i < tests.count;++i)
+    {
+        ftb_error_ret((!tests.items[i].func),false);
+        tests.items[i].res = tests.items[i].func();
+    }
+    return true;
+}
+
+FTBDEF void ftb_tests_report
+(ftb_tests_t tests)
+{
+    if(!tests.count) return;
+    u32 i = 0;
+    printf("\n-----Results of a test group-----\n");
+    for(;i < tests.count;++i)
+    {
+        char c = (tests.items[i].res) ? 'S' : 'F';
+        printf("  [%c] <- %s\n",c,tests.items[i].name);
+    }
 }
 
 #endif /* FTB_FIRST_IMPLEMENTATION */
