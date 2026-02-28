@@ -10,11 +10,13 @@
 #endif /* FTBDEF */
 
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 
 typedef int8_t  i8;
 typedef int16_t i16;
@@ -52,9 +54,19 @@ typedef uintptr_t   usize;
 
 #endif /* FTB_WERROR */
 
+#ifdef FTB_VERBOSE
+
+#define _FTB_VERBOSE(msg)    \
+    do {                     \
+        fprintf(stdout,"[INFO]" msg); \
+    } while(0);
+#else /* FTB_VERBOSE */
+#define _FTB_VERBOSE(msg)
+#endif /* FTB_VERBOSE */
+
 #ifndef FTB_DA_INIT_CAPACITY
 #define FTB_DA_INIT_CAPACITY 16
-#endif // FTB_DA_INIT_CAPACITY
+#endif /* FTB_DA_INIT_CAPACITY */
 
 #define ftb_da_count(da) ((ftb_ptr_header_t*)(da) - 1)->count
 #define ftb_da_count_inc(da) (((ftb_ptr_header_t*)(da) - 1)->count++)
@@ -167,7 +179,7 @@ do {                                        \
         }                                       \
     } while(0)
 
-#else // FTB_TEST_CRASH
+#else /* FTB_TEST_CRASH */
 #define TEST_ASSERT(cond, msg) \
     do {                  \
         if (!(cond)) {    \
@@ -175,7 +187,7 @@ do {                                        \
         }                 \
     } while (0)
 
-#endif // FTB_TEST_CRASH
+#endif /* FTB_TEST_CRASH */
 
 typedef struct {
     u32 addr;
@@ -188,8 +200,23 @@ typedef struct {
     u32* marks;
 } ftb_mem_ptr_list_t;
 
+typedef enum {
+    ftb_log_level_all = 0,
+    ftb_log_level_info = 1,
+    ftb_log_level_warn = 2,
+    ftb_log_level_error = 3,
+} ftb_ctx_log_level_t;
+
+typedef struct {
+    FILE* log_file;
+    bool __close_file;
+    bool timestaps;
+    ftb_ctx_log_level_t level;
+} ftb_ctx_loger_t;
+
 typedef struct {
     ftb_mem_ptr_list_t ptrs;
+    ftb_ctx_loger_t loger;
 } ftb_ctx_t;
 
 typedef struct {
@@ -208,6 +235,7 @@ typedef struct {
 
 FTBDEF bool ftb_tests_run(ftb_test_t* tests);
 FTBDEF bool ftb_tests_report(ftb_test_t* tests);
+FTBDEF bool ftb_tests_report_redirect(ftb_test_t* tests,FILE* fptr);
 
 FTBDEF void ftb_mem_delete_ctx(ftb_ctx_t* ctx);
 FTBDEF void* ftb_mem_alloc(ftb_ctx_t* ctx,usize bytes);
@@ -217,6 +245,19 @@ FTBDEF void ftb_mem_free(ftb_ctx_t* ctx,void* ptr);
 FTBDEF void ftb_mem_set_mark(ftb_ctx_t* ctx);
 FTBDEF void ftb_mem_cleanup(ftb_ctx_t* ctx);
 
+FTBDEF bool __ftb_log
+(ftb_ctx_t* ctx,const char* tag,const char* fmt,va_list ap);
+FTBDEF bool ftb_log(ftb_ctx_t* ctx,const char* tag,const char* fmt,...);
+FTBDEF bool ftb_log_info(ftb_ctx_t* ctx,const char* fmt,...);
+FTBDEF bool ftb_log_warn(ftb_ctx_t* ctx,const char* fmt,...);
+FTBDEF bool ftb_log_error(ftb_ctx_t* ctx,const char* fmt,...);
+FTBDEF bool ftb_log_debug(ftb_ctx_t* ctx,const char* fmt,...);
+FTBDEF bool ftb_log_set_timestap(ftb_ctx_t* ctx,bool x);
+FTBDEF bool ftb_log_toogle_timestap(ftb_ctx_t* ctx);
+FTBDEF bool ftb_log_set_log_file_path(ftb_ctx_t* ctx,const char* path);
+FTBDEF bool ftb_log_set_log_file(ftb_ctx_t* ctx,FILE* file);
+FTBDEF bool ftb_log_set_log_level(ftb_ctx_t* ctx,ftb_ctx_log_level_t level);
+
 typedef char* ftb_str_t;
 
 FTBDEF ftb_str_t ftb_str_create(ftb_ctx_t* ctx);
@@ -225,6 +266,7 @@ FTBDEF char* ftb_str_to_cstr(ftb_ctx_t* ctx,ftb_str_t str);
 FTBDEF u32 ftb_str_len(ftb_str_t str);
 
 #define ftb_str_len(str) ftb_da_count(str)
+#define ftb_free_raw_str(str) ftb_da_free(str)
 
 #define ftb_str_append_cstr(ctx,str,cstr)                      \
     do {                                                       \
@@ -238,9 +280,6 @@ FTBDEF u32 ftb_str_len(ftb_str_t str);
         ftb_da_appends(ctx,str1,str2,ftb_da_count(str2));      \
     } while(0)
 
-
-//FTBDEF bool ftb_str_append_cstr(ftb_ctx_t* ctx,ftb_str_t str,char* cstr);
-//FTBDEF bool ftb_str_append_str(ftb_ctx_t* ctx,ftb_str_t str,ftb_str_t str2);
 FTBDEF bool ftb_str_cmp_cstr(ftb_str_t str,char* cstr);
 FTBDEF bool ftb_str_cmp_str(ftb_str_t str,ftb_str_t cstr);
 
@@ -359,6 +398,10 @@ FTBDEF void ftb_mem_delete_ctx
     }
     ftb_raw_da_free(ctx->ptrs.items);
     ftb_raw_da_free(ctx->ptrs.marks);
+    if(ctx->loger.__close_file)
+    {
+        fclose(ctx->loger.log_file);
+    }
     return;
 }
 
@@ -644,19 +687,178 @@ FTBDEF bool ftb_tests_run
 FTBDEF bool ftb_tests_report
 (ftb_test_t* tests)
 {
+    return ftb_tests_report_redirect(tests,stdout);
+}
+
+FTBDEF bool ftb_tests_report_redirect
+(ftb_test_t* tests,FILE* fptr)
+{
+    ftb_error_ret((!fptr || !tests),false);
     if(!ftb_da_count(tests)) return true;
     u32 i = 0;
-    printf("\n-----Results of a test group-----\n");
+    fprintf(fptr,"\n-----Results of a test group-----\n");
     bool pass = true;
+    char green_s[] = "\033[32mS\033[0m";
+    char red_f[]   = "\033[31mF\033[0m";
+    char *s,*f;
+    if(fptr == stdout || fptr == stderr) {
+        s = green_s;
+        f = red_f;
+    } else {
+        s = "S";
+        f = "F";
+    }
     for(;i < ftb_da_count(tests);++i)
     {
         pass &= tests[i].res;
-        char s[] = "\033[32mS\033[0m";
-        char f[]   = "\033[31mF\033[0m";
         char* c = (tests[i].res) ? s : f;
-        printf("  [%s] <- %s\n",c,tests[i].name);
+        fprintf(fptr,"  [%s] <- %s\n",c,tests[i].name);
     }
     return pass;
+}
+
+FTBDEF bool __ftb_log
+(ftb_ctx_t* ctx,const char* tag,const char* fmt,va_list ap)
+{
+    assert(ctx);
+    if(!ctx->loger.log_file) return true;
+    u32 tag_len = strlen(tag);
+    u32 fmt_len = strlen(fmt);
+    u32 len = fmt_len+tag_len;
+    char buf[len+64];
+    u32 index = 0;
+    if(ctx->loger.timestaps) {
+        time_t t = time(NULL);
+        struct tm *tm = localtime(&t);
+        sprintf(buf,"[%02d:%02d:%02d] ", tm->tm_hour, tm->tm_min, tm->tm_sec);
+        index = strlen(buf);
+    }
+    buf[index++] = '[';
+    memcpy(&buf[index],tag,tag_len);
+    index += tag_len;
+    buf[index++] = ']';
+    buf[index++] = ' ';
+    memcpy(&buf[index],fmt,fmt_len);
+    index += fmt_len;
+    buf[index++] = '\n';
+    buf[index++] = '\0';
+    i32 err = vfprintf(ctx->loger.log_file,buf,ap);
+    return (err < 0) ? false : true;
+}
+
+FTBDEF bool ftb_log
+(ftb_ctx_t* ctx,const char* tag,const char* fmt,...)
+{
+    va_list ap = {0};
+    va_start(ap,fmt);
+    bool err = __ftb_log(ctx,tag,fmt,ap);
+    va_end(ap);
+    return err;
+}
+
+FTBDEF bool ftb_log_info
+(ftb_ctx_t* ctx,const char* fmt,...)
+{
+    ftb_error_ret((!ctx || !fmt),false);
+    if(ctx->loger.level > ftb_log_level_info) return true;
+    va_list ap = {0};
+    va_start(ap,fmt);
+    bool err = __ftb_log(ctx,"INFO",fmt,ap);
+    va_end(ap);
+    return err;
+}
+
+FTBDEF bool ftb_log_warn
+(ftb_ctx_t* ctx,const char* fmt,...)
+{
+    ftb_error_ret((!ctx || !fmt),false);
+    if(ctx->loger.level > ftb_log_level_warn) return true;
+    va_list ap = {0};
+    va_start(ap,fmt);
+    bool err = __ftb_log(ctx,"WARN",fmt,ap);
+    va_end(ap);
+    return err;
+}
+
+FTBDEF bool ftb_log_error
+(ftb_ctx_t* ctx,const char* fmt,...)
+{
+    ftb_error_ret((!ctx || !fmt),false);
+    if(ctx->loger.level > ftb_log_level_error) return true;
+    va_list ap = {0};
+    va_start(ap,fmt);
+    bool err = __ftb_log(ctx,"ERROR",fmt,ap);
+    va_end(ap);
+    return err;
+}
+
+#if defined(DEBUG) || defined(FTB_DEBUG)
+FTBDEF bool ftb_log_debug
+(ftb_ctx_t* ctx,const char* fmt,...)
+{
+    ftb_error_ret((!ctx || !fmt),false);
+    if(ctx->loger.level > ftb_log_debug) return true;
+    va_list ap = {0};
+    va_start(ap,fmt);
+    bool err = __ftb_log(ctx,"DEBUG",fmt,ap);
+    va_end(ap);
+    return err;
+}
+#else 
+FTBDEF bool ftb_log_debug
+(ftb_ctx_t* ctx,const char* fmt,...)
+{
+    (void)ctx;
+    (void)fmt;
+    return true;
+}
+#endif /* defined(DEBUG) || defined(FTB_DEBUG) */
+
+FTBDEF bool ftb_log_set_timestap
+(ftb_ctx_t* ctx,bool x)
+{
+    ftb_error_ret(!ctx,false);
+    ctx->loger.timestaps = x;
+    return true;
+}
+
+FTBDEF bool ftb_log_toogle_timestap
+(ftb_ctx_t* ctx)
+{
+    ftb_error_ret(!ctx,false);
+    ctx->loger.timestaps = !ctx->loger.timestaps;
+    return true;
+}
+
+FTBDEF bool ftb_log_set_log_file_path
+(ftb_ctx_t* ctx,const char* path)
+{
+    ftb_error_ret(!ctx,false);
+    FILE* fptr = 0;
+    fptr = fopen(path,"w");
+    if(!fptr) return false;
+    ctx->loger.log_file = fptr;
+    ctx->loger.__close_file = true;
+    return true;
+}
+
+FTBDEF bool ftb_log_set_log_file
+(ftb_ctx_t* ctx,FILE* file)
+{
+    ftb_error_ret(!ctx,false);
+    ctx->loger.log_file = file;
+    return true;
+}
+
+FTBDEF bool ftb_log_set_log_level
+(ftb_ctx_t* ctx,ftb_ctx_log_level_t level)
+{
+    ftb_error_ret(!ctx,false);
+    if(level >= ftb_log_level_all && level <= ftb_log_level_error) {
+        ctx->loger.level = level;
+        return true;
+    }
+    return false;
 }
 
 #endif /* FTB_FIRST_IMPLEMENTATION */
