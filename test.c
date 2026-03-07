@@ -37,6 +37,8 @@ bool test_mem_free_direct(void) {
 
     int* ptr1 = ftb_mem_alloc(&ctx, sizeof(int));
     int* ptr2 = ftb_mem_alloc(&ctx, sizeof(int));
+    ptr2 = ptr2;
+    ptr1 = ptr1;
     TEST_ASSERT(ftb_da_count(ctx.ptrs.items) == 2, "Items count 2");
 
     ftb_mem_free(&ctx, ptr1);

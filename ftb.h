@@ -442,7 +442,7 @@ FTBDEF void ftb_mem_delete_ctx
     assert(ctx);
     if(ctx->ptrs.items)
     {
-        for(i32 i = 0;i < ftb_da_count(ctx->ptrs.items);++i)
+        for(u32 i = 0;i < ftb_da_count(ctx->ptrs.items);++i)
         {
             if(!ctx->ptrs.items[i]) {continue;}
             void* ptr = (ftb_ptr_header_t*)ctx->ptrs.items[i] - 1;
@@ -465,7 +465,7 @@ FTBDEF void ftb_mem_cleanup
     assert(ctx);
     isize i = ftb_da_count(ctx->ptrs.items) - 1;
     assert(i >= 0);
-    assert(ftb_da_count(ctx->ptrs.marks) >= 0);
+    assert(ftb_da_count(ctx->ptrs.marks) > 0);
     isize stop = ctx->ptrs.marks[ftb_da_count(ctx->ptrs.marks)-1];
     for(;i >= stop;--i)
     {
@@ -522,7 +522,7 @@ FTBDEF bool ftb_str_uppercase
 (ftb_str_t str)
 {
     ftb_error_ret(!str,false);
-    i32 i = 0;
+    u32 i = 0;
     for(;i < ftb_da_count(str);++i)
     {
         char c = str[i];
@@ -538,7 +538,7 @@ FTBDEF bool ftb_str_lowercase
 (ftb_str_t str)
 {
     ftb_error_ret(!str,false);
-    i32 i = 0;
+    u32 i = 0;
     for(;i < ftb_da_count(str);++i)
     {
         char c = str[i];
@@ -554,7 +554,7 @@ FTBDEF bool ftb_str_starts_with_cstr
 (ftb_str_t str,const char* cstr)
 {
     ftb_error_ret((!str || !cstr),false);
-    i32 len = strlen(cstr);
+    u32 len = strlen(cstr);
     if(ftb_da_count(str) < len) return false;
     return (strncmp(str,cstr,len) == 0);
 }
@@ -563,7 +563,7 @@ FTBDEF bool ftb_str_ends_with_cstr
 (ftb_str_t str,const char* cstr)
 {
     ftb_error_ret((!str || !cstr),false);
-    i32 len = strlen(cstr);
+    u32 len = strlen(cstr);
     if(ftb_da_count(str) < len) return false;
     char* start = &str[ftb_da_count(str)-len];
     return (strncmp(start,cstr,len) == 0);
@@ -591,7 +591,7 @@ FTBDEF bool ftb_str_trim_left
 (ftb_str_t str)
 {
     ftb_error_ret(!str,false);
-    i32 i = 0;
+    u32 i = 0;
     for(;i < ftb_da_count(str);++i)
     {
         if(!isspace(str[i]))
@@ -638,7 +638,7 @@ FTBDEF i32 ftb_str_find_char_begin
 (ftb_str_t str,char c)
 {
     ftb_error_ret(!str,-1);
-    i32 i = 0;
+    u32 i = 0;
     for(;i < ftb_da_count(str);++i)
     {
         if(str[i] == c)
@@ -668,7 +668,7 @@ FTBDEF i32 ftb_str_find_cstr
 (ftb_str_t str,char* needle)
 {
     ftb_error_ret((!str || !needle),-1);
-    i32 i = 0;
+    u32 i = 0;
     u32 len = strlen(needle);
     for(;i < ftb_da_count(str);++i)
     {
@@ -690,7 +690,7 @@ FTBDEF i32 ftb_str_find_str
 (ftb_str_t str,ftb_str_t needle)
 {
     ftb_error_ret((!str || !needle),-1);
-    i32 i = 0;
+    u32 i = 0;
     for(;i < ftb_da_count(str);++i)
     {
         if(strncmp(&str[i],needle,ftb_da_count(needle)) == 0)
@@ -710,9 +710,9 @@ FTBDEF bool ftb_str_contains_str
 FTBDEF bool ftb_str_remove_range(ftb_str_t str, u32 start, u32 len)
 {
     ftb_error_ret(!str,false);
-    if((i32)start >= ftb_da_count(str)) {return true;}
+    if(start >= ftb_da_count(str)) {return true;}
     if(len == 0) {return true;}
-    if((i32)start + (i32)len > ftb_da_count(str)) {
+    if(start + len > ftb_da_count(str)) {
         len = ftb_da_count(str) - start;
     }
     char* data = str;
@@ -1096,7 +1096,7 @@ bool ftb_path_join_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len
             ftb_da_appends(ctx, *out, p2 + 1, len2 - 1);
         } else if (!p1_has_sep && !p2_has_sep && len1 > 0) {
             char sep = FTB_FS_SEP;
-            ftb_str_append_cstr_n(ctx, *out, &sep, 1);
+            ftb_da_appends(ctx, *out, &sep, 1);
             ftb_str_append_cstr_n(ctx, *out, p2, len2);
         } else {
             ftb_str_append_cstr_n(ctx, *out, p2, len2);
@@ -1144,19 +1144,19 @@ bool ftb_path_normalize_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, 
     }
     if (is_abs) {
         char sep = FTB_FS_SEP;
-        ftb_str_append_cstr_n(ctx, *out, &sep, 1);
+        ftb_da_appends(ctx, *out, &sep, 1);
     }
     u32 count = ftb_da_count(stack);
     for (u32 j = 0; j < count; j++) {
         ftb_str_append_cstr_n(ctx, *out, stack[j].ptr, stack[j].len);
         if (j < count - 1 || (!is_abs && count == 0)) {
             char sep = FTB_FS_SEP;
-            ftb_str_append_cstr_n(ctx, *out, &sep, 1);
+            ftb_da_appends(ctx, *out, &sep, 1);
         }
     }
     if (ftb_da_count(*out) == 0 && !is_abs) {
         char dot = '.';
-        ftb_str_append_cstr_n(ctx, *out, &dot, 1);
+        ftb_da_appends(ctx, *out, &dot, 1);
     }
     if (stack) ftb_raw_da_free(stack);
     return true;
@@ -1175,7 +1175,7 @@ bool ftb_path_with_extension_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p
     if (ext_len > 0) {
         if (ext[0] != '.') {
             char dot_char = '.';
-            ftb_str_append_cstr_n(ctx, *out, &dot_char, 1);
+            ftb_da_appends(ctx, *out, &dot_char, 1);
         }
         ftb_str_append_cstr_n(ctx, *out, ext, ext_len);
     }
@@ -1320,7 +1320,7 @@ bool ftb_path_cwd(ftb_ctx_t* ctx, ftb_path_t* out) {
 #else
     char buf[4096];
     if (getcwd(buf, sizeof(buf)) != NULL) {
-        ftb_str_append_cstr_n(ctx, *out, buf, strlen(buf));
+        ftb_da_appends(ctx, *out, buf, strlen(buf));
         return true;
     }
     return false;
