@@ -2,8 +2,16 @@
 #define FTB_H_
 
 #ifdef _WIN32
-#error "Doesnt support windows yet!"
-#endif
+
+#define FTB_FS_SEP '\\'
+    #include <windows.h>
+    #warning "Doesnt fully support windows and havent done any test for it yet!"
+#else /* _WIN32 */
+    #define FTB_FS_SEP '/'
+    #include <sys/stat.h>
+    #include <unistd.h>
+    #include <limits.h>
+#endif /* _WIN32 */
 
 #ifndef FTBDEF
 #define FTBDEF
@@ -95,8 +103,8 @@ typedef uintptr_t   usize;
             if (_ftb_da_new_cap < _ftb_da_needed) {                                                                      \
                 _ftb_da_new_cap = _ftb_da_needed;                                                                        \
             }                                                                                                            \
-            header->capacity = _ftb_da_new_cap;                                                                          \
-            da = ftb_mem_realloc((ctx), da, sizeof(*(da)) * header->capacity + sizeof(ftb_ptr_header_t));        \
+            da = ftb_mem_realloc((ctx), da, sizeof(*(da)) * _ftb_da_new_cap + sizeof(ftb_ptr_header_t));                \
+            ((ftb_ptr_header_t*)(da) - 1)->capacity = _ftb_da_new_cap;                                                   \
         }                                                                                                                \
     } while (0)
 
@@ -268,16 +276,22 @@ FTBDEF u32 ftb_str_len(ftb_str_t str);
 #define ftb_str_len(str) ftb_da_count(str)
 #define ftb_free_raw_str(str) ftb_da_free(str)
 
-#define ftb_str_append_cstr(ctx,str,cstr)                      \
-    do {                                                       \
-        ftb_error_ret((!str || !cstr),false);                  \
-        ftb_da_appends(ctx,str,cstr,strlen(cstr));             \
+#define ftb_str_append_cstr_n(ctx,str,cstr,n)             \
+    do {                                                  \
+        ftb_error_ret(!cstr,false);                       \
+        ftb_da_appends(ctx,str,cstr,n);                   \
     } while (0)
 
-#define ftb_str_append_str(ctx,str1,str2)                      \
-    do {                                                       \
-        ftb_error_ret((!str1 || !str2 || str1 == str2),false); \
-        ftb_da_appends(ctx,str1,str2,ftb_da_count(str2));      \
+#define ftb_str_append_cstr(ctx,str,cstr)                 \
+    do {                                                  \
+        ftb_error_ret(!cstr,false);                       \
+        ftb_da_appends(ctx,str,cstr,strlen(cstr));        \
+    } while (0)
+
+#define ftb_str_append_str(ctx,str1,str2)                 \
+    do {                                                  \
+        ftb_error_ret((!str2 || str1 == str2),false);     \
+        ftb_da_appends(ctx,str1,str2,ftb_da_count(str2)); \
     } while(0)
 
 FTBDEF bool ftb_str_cmp_cstr(ftb_str_t str,char* cstr);
@@ -303,6 +317,43 @@ FTBDEF bool ftb_str_contains_cstr(ftb_str_t str,char* needle);
 FTBDEF bool ftb_str_contains_str(ftb_str_t str,ftb_str_t needle);
 
 FTBDEF bool ftb_str_remove_range(ftb_str_t str, u32 start, u32 len);
+
+typedef char* ftb_path_t;
+
+bool ftb_path_basename_cstr(ftb_ctx_t* ctx,ftb_path_t* out,const char* path,u32 len);
+bool ftb_path_dirname_cstr(ftb_ctx_t* ctx,ftb_path_t* out,const char* path,u32 len);
+bool ftb_path_extension_cstr(ftb_ctx_t* ctx,ftb_path_t* out,const char* path,u32 len);
+bool ftb_path_stem_cstr(ftb_ctx_t* ctx,ftb_path_t* out,const char* path,u32 len);
+
+bool ftb_path_basename(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
+bool ftb_path_dirname(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
+bool ftb_path_extension(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
+bool ftb_path_stem(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
+
+
+bool ftb_path_join_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len1, const char* p2, u32 len2);
+bool ftb_path_join(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t p1, ftb_path_t p2);
+bool ftb_path_normalize_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len);
+bool ftb_path_normalize(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path);
+bool ftb_path_with_extension_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len, const char* ext, u32 ext_len);
+bool ftb_path_with_extension(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path, ftb_path_t ext);
+
+bool ftb_path_is_absolute_cstr(const char* path, u32 len);
+bool ftb_path_is_absolute(ftb_path_t path);
+bool ftb_path_is_relative_cstr(const char* path, u32 len);
+bool ftb_path_is_relative(ftb_path_t path);
+bool ftb_path_has_extension_cstr(const char* path, u32 len);
+bool ftb_path_has_extension(ftb_path_t path);
+bool ftb_path_exists_cstr(ftb_ctx_t* ctx, const char* path, u32 len);
+bool ftb_path_exists(ftb_ctx_t* ctx, ftb_path_t path);
+bool ftb_path_is_file_cstr(ftb_ctx_t* ctx, const char* path, u32 len);
+bool ftb_path_is_file(ftb_ctx_t* ctx, ftb_path_t path);
+bool ftb_path_is_dir_cstr(ftb_ctx_t* ctx, const char* path, u32 len);
+bool ftb_path_is_dir(ftb_ctx_t* ctx, ftb_path_t path);
+bool ftb_path_absolute_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len);
+bool ftb_path_absolute(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path);
+
+bool ftb_path_cwd(ftb_ctx_t* ctx, ftb_path_t* out);
 
 #endif /* FTB_H_ */
 
@@ -371,7 +422,7 @@ FTBDEF void ftb_mem_free
     ftb_ptr_header_t* a = ((ftb_ptr_header_t*)ptr - 1);
     u32 i = a->addr;
     free(a);
-    ctx->ptrs.items[i] = 0;
+    ctx->ptrs.items[i-1] = 0;
 }
 
 FTBDEF void ftb_mem_set_mark
@@ -388,16 +439,19 @@ FTBDEF void ftb_mem_set_mark
 FTBDEF void ftb_mem_delete_ctx
 (ftb_ctx_t* ctx)
 {
-    return;
     assert(ctx);
-    for(i32 i = 0;i < ftb_da_count(ctx->ptrs.items);++i)
+    if(ctx->ptrs.items)
     {
-        if(!ctx->ptrs.items[i]) {continue;}
-        void* ptr = (ftb_ptr_header_t*)ctx->ptrs.items[i] - 1;
-        free(ptr);
+        for(i32 i = 0;i < ftb_da_count(ctx->ptrs.items);++i)
+        {
+            if(!ctx->ptrs.items[i]) {continue;}
+            void* ptr = (ftb_ptr_header_t*)ctx->ptrs.items[i] - 1;
+            free(ptr);
+        }
+        ftb_raw_da_free(ctx->ptrs.items);
     }
-    ftb_raw_da_free(ctx->ptrs.items);
-    ftb_raw_da_free(ctx->ptrs.marks);
+    if(ctx->ptrs.marks)
+    {ftb_raw_da_free(ctx->ptrs.marks);}
     if(ctx->loger.__close_file)
     {
         fclose(ctx->loger.log_file);
@@ -860,6 +914,419 @@ FTBDEF bool ftb_log_set_log_level
     }
     return false;
 }
+
+typedef struct {
+    const char* ptr;
+    u32 count;
+} ftb_str_cut_t;
+
+ftb_str_cut_t ftb_str_sepc_cstr
+(char c, const char* path, u32 len)
+{
+    if(!path || !len) { return (ftb_str_cut_t){0}; }
+    for(u32 i = 0; i < len; ++i) {
+        if(path[i] == c) {
+            return (ftb_str_cut_t){.ptr = path, .count = i};
+        }
+    }
+    return (ftb_str_cut_t){.ptr = path, .count = len};
+}
+
+ftb_str_cut_t ftb_str_sepc_cstr_rev
+(char c, const char* path, u32 len)
+{
+    if(!path || !len) { return (ftb_str_cut_t){0}; }
+    u32 i = len;
+    while(i-- > 0) {
+        if(path[i] == c) {
+            return (ftb_str_cut_t){.ptr = &path[i], .count = len - i};
+        }
+    }
+    return (ftb_str_cut_t){.ptr = path, .count = len};
+}
+
+ftb_str_cut_t ftb_str_sepc_cstr_rev_wout
+(char want, char wout, const char* path, u32 len)
+{
+    if(!path || !len) { return (ftb_str_cut_t){0}; }
+    u32 i = len;
+    while(i-- > 0) {
+        if(path[i] == want) {
+            ++i;
+            return (ftb_str_cut_t){.ptr = &path[i], .count = len - i};
+        }
+        if(path[i] == wout) { 
+            break; 
+        }
+    }
+    return (ftb_str_cut_t){0};
+}
+
+ftb_str_cut_t ftb_str_sepc_cstr_wout
+(char want, char wout, const char* path, u32 len)
+{
+    if(!path || !len) { return (ftb_str_cut_t){0}; }
+    for(u32 i = 0; i < len; ++i) {
+        if(path[i] == want) {
+            return (ftb_str_cut_t){.ptr = path, .count = i};
+        }
+        if(path[i] == wout) { 
+            break; 
+        }
+    }
+    return (ftb_str_cut_t){0};
+}
+
+bool ftb_path_basename_cstr
+(ftb_ctx_t* ctx,ftb_path_t* out,const char* path,u32 len)
+{
+    ftb_error_ret((!ctx || !path || !out),false);
+    if(len == 0) {return false;}
+    ftb_str_clear(*out);
+    ftb_str_cut_t cut = ftb_str_sepc_cstr_rev(FTB_FS_SEP, path, len);
+#ifdef _WIN32
+    ftb_str_cut_t cut_fwd = ftb_str_sepc_cstr_rev('/', path, len);
+    if (cut_fwd.ptr && (!cut.ptr || cut_fwd.ptr > cut.ptr)) {
+        cut = cut_fwd;
+    }
+#endif
+    if(!cut.ptr || cut.count == len) {
+        ftb_str_append_cstr_n(ctx, *out, path, len);
+        return true;
+    }
+    ftb_da_appends(ctx, *out, cut.ptr + 1, cut.count - 1);
+    return true;
+}
+
+bool ftb_path_dirname_cstr
+(ftb_ctx_t* ctx,ftb_path_t* out,const char* path,u32 len)
+{
+    ftb_error_ret((!ctx || !path || !out),false);
+    if(len == 0) {return false;}
+    ftb_str_clear(*out);
+    ftb_str_cut_t cut = ftb_str_sepc_cstr_rev(FTB_FS_SEP, path, len);
+    u32 dir_len = 0;
+    if (cut.count == len) {
+        if (cut.ptr[0] == FTB_FS_SEP) {
+            dir_len = 1;
+        } else {
+            return true;
+        }
+    } else {
+        dir_len = len - cut.count; 
+    }
+    if (dir_len > 0) {
+        ftb_str_append_cstr_n(ctx, *out, path, dir_len);
+    }
+    return true;
+}
+
+bool ftb_path_extension_cstr
+(ftb_ctx_t* ctx,ftb_path_t* out,const char* path,u32 len)
+{
+    ftb_error_ret((!ctx || !path || !out),false);
+    ftb_str_clear(*out);
+    if(len == 0) {return false;}
+    ftb_str_cut_t cut = {0};
+    cut = ftb_str_sepc_cstr_rev_wout('.',FTB_FS_SEP,path,len);
+    if(!cut.ptr) {return false;}
+    ftb_str_append_cstr_n(ctx,*out,cut.ptr,cut.count+1);
+    return true;
+}
+
+bool ftb_path_stem_cstr
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len)
+{
+    ftb_error_ret((!ctx || !path || !out), false);
+    ftb_str_clear(*out);
+    if (len == 0) { return false; }
+    ftb_str_cut_t dot = ftb_str_sepc_cstr_rev_wout('.', FTB_FS_SEP, path, len);
+    ftb_str_cut_t sep = ftb_str_sepc_cstr_rev(FTB_FS_SEP, path, len);
+    const char* start_ptr = path;
+    u32 start_len = len;
+    if (sep.count > 0 && sep.ptr[0] == FTB_FS_SEP) {
+        start_ptr = sep.ptr + 1;
+        start_len = sep.count - 1;
+    } else {
+        start_ptr = sep.ptr;
+        start_len = sep.count;
+    }
+    u32 copy_len = start_len;
+    if (dot.ptr != NULL) {
+        copy_len = start_len - dot.count - 1;
+    }
+    ftb_str_append_cstr_n(ctx,*out,start_ptr,copy_len);
+    return true;
+}
+
+bool ftb_path_basename
+(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path)
+{
+    return ftb_path_basename_cstr(ctx,out,path,ftb_str_len(path));
+}
+
+bool ftb_path_dirname
+(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path)
+{
+    return ftb_path_dirname_cstr(ctx,out,path,ftb_str_len(path));
+}
+
+bool ftb_path_extension
+(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path)
+{
+    return ftb_path_extension_cstr(ctx,out,path,ftb_str_len(path));
+}
+
+bool ftb_path_stem
+(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path)
+{
+    return ftb_path_stem_cstr(ctx,out,path,ftb_str_len(path));
+}
+
+bool ftb_path_join_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len1, const char* p2, u32 len2) {
+    ftb_error_ret((!ctx || !out || (!p1 && !p2)), false);
+    ftb_str_clear(*out);
+    if (p1 && len1 > 0) {
+        ftb_str_append_cstr_n(ctx, *out, p1, len1);
+    }
+    if (p2 && len2 > 0) {
+        bool p1_has_sep = (len1 > 0 && p1[len1 - 1] == FTB_FS_SEP);
+        bool p2_has_sep = (p2[0] == FTB_FS_SEP);
+        if (p1_has_sep && p2_has_sep) {
+            ftb_da_appends(ctx, *out, p2 + 1, len2 - 1);
+        } else if (!p1_has_sep && !p2_has_sep && len1 > 0) {
+            char sep = FTB_FS_SEP;
+            ftb_str_append_cstr_n(ctx, *out, &sep, 1);
+            ftb_str_append_cstr_n(ctx, *out, p2, len2);
+        } else {
+            ftb_str_append_cstr_n(ctx, *out, p2, len2);
+        }
+    }
+    return true;
+}
+
+bool ftb_path_join(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t p1, ftb_path_t p2) {
+    return ftb_path_join_cstr(ctx, out, p1, ftb_str_len(p1), p2, ftb_str_len(p2));
+}
+
+bool ftb_path_normalize_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len) {
+    ftb_error_ret((!ctx || !path || !out), false);
+    ftb_str_clear(*out);
+    if (len == 0) return true;
+    typedef struct { const char* ptr; u32 len; } ftb_path_comp_t;
+    ftb_path_comp_t* stack = NULL;
+    u32 i = 0;
+    bool is_abs = (path[0] == FTB_FS_SEP);
+    while (i < len) {
+        while (i < len && path[i] == FTB_FS_SEP) i++;
+        if (i >= len) break;
+        u32 start = i;
+        while (i < len && path[i] != FTB_FS_SEP) i++;
+        u32 comp_len = i - start;
+        if (comp_len == 1 && path[start] == '.') {
+            continue;
+        } else if (comp_len == 2 && path[start] == '.' && path[start+1] == '.') {
+            if (ftb_da_count(stack) > 0) {
+                ftb_path_comp_t top = stack[ftb_da_count(stack) - 1];
+                if (!(top.len == 2 && top.ptr[0] == '.' && top.ptr[1] == '.')) {
+                    ftb_da_count_dec(stack);
+                    continue;
+                }
+            }
+            if (!is_abs) {
+                ftb_path_comp_t c = {path + start, comp_len};
+                ftb_raw_da_append(stack, c);
+            }
+        } else {
+            ftb_path_comp_t c = {path + start, comp_len};
+            ftb_raw_da_append(stack, c);
+        }
+    }
+    if (is_abs) {
+        char sep = FTB_FS_SEP;
+        ftb_str_append_cstr_n(ctx, *out, &sep, 1);
+    }
+    u32 count = ftb_da_count(stack);
+    for (u32 j = 0; j < count; j++) {
+        ftb_str_append_cstr_n(ctx, *out, stack[j].ptr, stack[j].len);
+        if (j < count - 1 || (!is_abs && count == 0)) {
+            char sep = FTB_FS_SEP;
+            ftb_str_append_cstr_n(ctx, *out, &sep, 1);
+        }
+    }
+    if (ftb_da_count(*out) == 0 && !is_abs) {
+        char dot = '.';
+        ftb_str_append_cstr_n(ctx, *out, &dot, 1);
+    }
+    if (stack) ftb_raw_da_free(stack);
+    return true;
+}
+
+bool ftb_path_normalize(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path) {
+    return ftb_path_normalize_cstr(ctx, out, path, ftb_str_len(path));
+}
+
+bool ftb_path_with_extension_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len, const char* ext, u32 ext_len) {
+    ftb_error_ret((!ctx || !path || !out || !ext), false);
+    ftb_str_clear(*out);
+    ftb_str_cut_t dot = ftb_str_sepc_cstr_rev_wout('.', FTB_FS_SEP, path, len);
+    u32 base_len = dot.ptr ? (len - dot.count - 1) : len;
+    ftb_str_append_cstr_n(ctx, *out, path, base_len);
+    if (ext_len > 0) {
+        if (ext[0] != '.') {
+            char dot_char = '.';
+            ftb_str_append_cstr_n(ctx, *out, &dot_char, 1);
+        }
+        ftb_str_append_cstr_n(ctx, *out, ext, ext_len);
+    }
+    return true;
+}
+
+bool ftb_path_with_extension(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path, ftb_path_t ext) {
+    return ftb_path_with_extension_cstr(ctx, out, path, ftb_str_len(path), ext, ftb_str_len(ext));
+}
+
+bool ftb_path_is_absolute_cstr(const char* path, u32 len) {
+    if (!path || len == 0) return false;
+    return path[0] == FTB_FS_SEP;
+}
+
+bool ftb_path_is_absolute(ftb_path_t path) {
+    return ftb_path_is_absolute_cstr(path, ftb_str_len(path));
+}
+
+bool ftb_path_is_relative_cstr(const char* path, u32 len) {
+    if (!path || len == 0) return true;
+    return !ftb_path_is_absolute_cstr(path, len);
+}
+
+bool ftb_path_is_relative(ftb_path_t path) {
+    return ftb_path_is_relative_cstr(path, ftb_str_len(path));
+}
+
+bool ftb_path_has_extension_cstr(const char* path, u32 len) {
+    if (!path || len == 0) return false;
+    ftb_str_cut_t dot = ftb_str_sepc_cstr_rev_wout('.', FTB_FS_SEP, path, len);
+    return dot.ptr != NULL;
+}
+
+bool ftb_path_has_extension(ftb_path_t path) {
+    return ftb_path_has_extension_cstr(path, ftb_str_len(path));
+}
+
+static char* _ftb_path_temp_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
+    char* tmp = ftb_mem_alloc(ctx, len + 1);
+    memcpy(tmp, path, len);
+    tmp[len] = '\0';
+    return tmp;
+}
+
+bool ftb_path_exists_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
+    if (!ctx || !path || len == 0) return false;
+    char* tmp = _ftb_path_temp_cstr(ctx, path, len);
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(tmp);
+    ftb_mem_free(ctx, tmp);
+    return (attrs != INVALID_FILE_ATTRIBUTES);
+#else
+    struct stat st;
+    bool exists = (stat(tmp, &st) == 0);
+    ftb_mem_free(ctx, tmp);
+    return exists;
+#endif
+}
+
+bool ftb_path_exists(ftb_ctx_t* ctx, ftb_path_t path) {
+    return ftb_path_exists_cstr(ctx, path, ftb_str_len(path));
+}
+
+bool ftb_path_is_file_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
+    if (!ctx || !path || len == 0) return false;
+    char* tmp = _ftb_path_temp_cstr(ctx, path, len);
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(tmp);
+    ftb_mem_free(ctx, tmp);
+    return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    bool is_f = (stat(tmp, &st) == 0 && S_ISREG(st.st_mode));
+    ftb_mem_free(ctx, tmp);
+    return is_f;
+#endif
+}
+
+bool ftb_path_is_file(ftb_ctx_t* ctx, ftb_path_t path) {
+    return ftb_path_is_file_cstr(ctx, path, ftb_str_len(path));
+}
+
+bool ftb_path_is_dir_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
+    if (!ctx || !path || len == 0) return false;
+    char* tmp = _ftb_path_temp_cstr(ctx, path, len);
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(tmp);
+    ftb_mem_free(ctx, tmp);
+    return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    bool is_d = (stat(tmp, &st) == 0 && S_ISDIR(st.st_mode));
+    ftb_mem_free(ctx, tmp);
+    return is_d;
+#endif
+}
+
+bool ftb_path_is_dir(ftb_ctx_t* ctx, ftb_path_t path) {
+    return ftb_path_is_dir_cstr(ctx, path, ftb_str_len(path));
+}
+
+bool ftb_path_absolute_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len) {
+    ftb_error_ret((!ctx || !path || !out), false);
+    ftb_str_clear(*out);
+    char* tmp = _ftb_path_temp_cstr(ctx, path, len);
+#ifdef _WIN32
+    char* resolved = _fullpath(NULL, tmp, 0);
+#else
+    char* resolved = realpath(tmp, NULL);
+#endif
+    ftb_mem_free(ctx, tmp);
+    if (!resolved) return false;
+#ifdef _WIN32
+    for (int i = 0; resolved[i]; ++i) {
+        if (resolved[i] == '\\') resolved[i] = FTB_FS_SEP;
+    }
+#endif
+    ftb_str_append_cstr_n(ctx, *out, resolved, strlen(resolved));
+    free(resolved); 
+    return true;
+}
+
+bool ftb_path_absolute(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path) {
+    return ftb_path_absolute_cstr(ctx, out, path, ftb_str_len(path));
+}
+
+bool ftb_path_cwd(ftb_ctx_t* ctx, ftb_path_t* out) {
+    ftb_error_ret((!ctx || !out), false);
+    ftb_str_clear(*out);
+#ifdef _WIN32
+    char buf[MAX_PATH];
+    DWORD len = GetCurrentDirectoryA(MAX_PATH, buf);
+    if (len > 0 && len < MAX_PATH) {
+        for (DWORD i = 0; i < len; ++i) {
+            if (buf[i] == '\\') buf[i] = FTB_FS_SEP; 
+        }
+        ftb_str_append_cstr_n(ctx, *out, buf, len);
+        return true;
+    }
+    return false;
+#else
+    char buf[4096];
+    if (getcwd(buf, sizeof(buf)) != NULL) {
+        ftb_str_append_cstr_n(ctx, *out, buf, strlen(buf));
+        return true;
+    }
+    return false;
+#endif
+}
+
 
 #endif /* FTB_FIRST_IMPLEMENTATION */
 #endif /* FTB_IMPLEMENTATION */
