@@ -76,88 +76,78 @@ typedef uintptr_t   usize;
 #define FTB_DA_INIT_CAPACITY 16
 #endif /* FTB_DA_INIT_CAPACITY */
 
-#define ftb_da_count(da) ((ftb_ptr_header_t*)(da) - 1)->count
-#define ftb_da_count_inc(da) (((ftb_ptr_header_t*)(da) - 1)->count++)
-#define ftb_da_count_sum(da,x) (((ftb_ptr_header_t*)(da) - 1)->count+=(x))
-#define ftb_da_count_sub(da,x) (((ftb_ptr_header_t*)(da) - 1)->count-=(x))
-#define ftb_da_count_dec(da) (((ftb_ptr_header_t*)(da) - 1)->count--)
-#define ftb_da_capacity(da) ((ftb_ptr_header_t*)(da) - 1)->capacity
-#define ftb_da_set_count(da,x) do{ ((ftb_ptr_header_t*)(da) - 1)->count = (x);} while(0)
-#define ftb_da_set_capacity(da,x) do{ ((ftb_ptr_header_t*)(da) - 1)->capacity = (x);} while(0)
-#define ftb_raw_da_free(da) free((ftb_ptr_header_t*)(da) - 1)
+#define ftb_da_header(da) ((ftb_ptr_header_t*)(da) - 1)
+#define ftb_da_addr(da) ((ftb_da_header(da))->addr)
+#define ftb_da_count(da) ((ftb_da_header(da))->count)
+#define ftb_da_count_inc(da) ((ftb_da_header(da))->count++)
+#define ftb_da_count_sum(da,x) ((ftb_da_header(da))->count+=(x))
+#define ftb_da_count_sub(da,x) ((ftb_da_header(da))->count-=(x))
+#define ftb_da_count_dec(da) ((ftb_da_header(da))->count--)
+#define ftb_da_capacity(da) (ftb_da_header(da))->capacity
+#define ftb_da_set_count(da,x) do{ (ftb_da_header(da))->count = (x);} while(0)
+#define ftb_da_set_capacity(da,x) do{ (ftb_da_header(da))->capacity = (x);} while(0)
+#define ftb_raw_da_free(da) free(ftb_da_header(da))
+#define ftb_da_clamp_id(da,x) CLAMP((x), 0, (ftb_da_count(arr)-1))
 
-#define ftb_da_reserve(ctx, da, amount)                                                                                  \
-    do {                                                                                                                 \
-        size_t _ftb_da_amt = (amount);                                                                                   \
-        if ((da) == NULL) {                                                                                              \
-            size_t _ftb_da_cap = FTB_DA_INIT_CAPACITY > _ftb_da_amt ? FTB_DA_INIT_CAPACITY : _ftb_da_amt;                \
-            ftb_ptr_header_t *header = ftb_mem_zalloc((ctx), sizeof(*(da)) * _ftb_da_cap + sizeof(ftb_ptr_header_t));    \
-            header->count = 0;                                                                                           \
-            header->capacity = _ftb_da_cap;                                                                              \
-            (da) = (void*)(header + 1);                                                                                  \
-        }                                                                                                                \
-        ftb_ptr_header_t *header = (ftb_ptr_header_t*)(da) - 1;                                                          \
-        size_t _ftb_da_needed = header->count + _ftb_da_amt;                                                             \
-        if (_ftb_da_needed > header->capacity) {                                                                         \
-            size_t _ftb_da_new_cap = header->capacity * 2;                                                               \
-            if (_ftb_da_new_cap < _ftb_da_needed) {                                                                      \
-                _ftb_da_new_cap = _ftb_da_needed;                                                                        \
-            }                                                                                                            \
-            da = ftb_mem_realloc((ctx), da, sizeof(*(da)) * _ftb_da_new_cap + sizeof(ftb_ptr_header_t));                \
-            ((ftb_ptr_header_t*)(da) - 1)->capacity = _ftb_da_new_cap;                                                   \
-        }                                                                                                                \
-    } while (0)
-
-#define ftb_raw_da_reserve(da, amount)                                                                                   \
-    do {                                                                                                                 \
-        size_t _ftb_da_amt = (amount);                                                                                   \
-        if ((da) == NULL) {                                                                                              \
-            size_t _ftb_da_cap = FTB_DA_INIT_CAPACITY > _ftb_da_amt ? FTB_DA_INIT_CAPACITY : _ftb_da_amt;                \
-            ftb_ptr_header_t *header = calloc(1, sizeof(*(da)) * _ftb_da_cap + sizeof(ftb_ptr_header_t));                \
-            header->count = 0;                                                                                           \
-            header->capacity = _ftb_da_cap;                                                                              \
-            (da) = (void*)(header + 1);                                                                                  \
-        }                                                                                                                \
-        ftb_ptr_header_t *header = (ftb_ptr_header_t*)(da) - 1;                                                          \
-        size_t _ftb_da_needed = header->count + _ftb_da_amt;                                                             \
-        if (_ftb_da_needed > header->capacity) {                                                                         \
-            size_t _ftb_da_new_cap = header->capacity * 2;                                                               \
-            if (_ftb_da_new_cap < _ftb_da_needed) {                                                                      \
-                _ftb_da_new_cap = _ftb_da_needed;                                                                        \
-            }                                                                                                            \
-            header->capacity = _ftb_da_new_cap;                                                                          \
-            header = realloc(header, sizeof(*(da)) * header->capacity + sizeof(ftb_ptr_header_t));                       \
-            (da) = (void*)(header + 1);                                                                                  \
-        }                                                                                                                \
-    } while (0)
-
-#define ftb_da_append(ctx,da,item)                           \
+#define __ftb_da_reserve(da,amount,func_alloc,func_realloc)  \
     do {                                                     \
-        ftb_da_reserve((ctx),(da),1);                        \
-        (da)[((ftb_ptr_header_t*)(da)-1)->count++] = (item); \
+        size_t _ftb_da_amt = (amount);                       \
+        ftb_ptr_header_t *header = 0;                        \
+        if((da) == NULL) {                                   \
+            size_t _ftb_da_cap = 0;                          \
+            _ftb_da_cap = FTB_DA_INIT_CAPACITY > _ftb_da_amt \
+            ? FTB_DA_INIT_CAPACITY : _ftb_da_amt;            \
+            func_alloc;                                      \
+            header->count = 0;                               \
+            header->capacity = _ftb_da_cap;                  \
+            (da) = (void*)(header + 1);                      \
+        }                                                    \
+        header = ftb_da_header(da);                          \
+        size_t _ftb_da_needed = header->count + _ftb_da_amt; \
+        if (_ftb_da_needed > header->capacity) {             \
+            size_t _ftb_da_new_cap = header->capacity * 2;   \
+            if (_ftb_da_new_cap < _ftb_da_needed) {          \
+                _ftb_da_new_cap = _ftb_da_needed;            \
+            }                                                \
+            func_realloc;                                    \
+        }                                                    \
     } while(0)
 
-#define ftb_raw_da_append(da,item)                           \
-    do {                                                     \
-        ftb_raw_da_reserve((da),1);                          \
-        (da)[((ftb_ptr_header_t*)(da)-1)->count++] = (item); \
+#define ftb_da_reserve(ctx,da,amount)                                                         \
+__ftb_da_reserve((da),(amount),                                                               \
+{(header) = ftb_mem_zalloc((ctx), sizeof(*(da)) * _ftb_da_cap + sizeof(ftb_ptr_header_t));},  \
+{da = ftb_mem_realloc((ctx), da, sizeof(*(da)) * _ftb_da_new_cap + sizeof(ftb_ptr_header_t)); \
+ ftb_da_set_capacity(da,_ftb_da_new_cap);})
+
+#define ftb_raw_da_reserve(da,amount)                                                         \
+__ftb_da_reserve((da),(amount),                                                               \
+{(header) = calloc(1, sizeof(*(da)) * _ftb_da_cap + sizeof(ftb_ptr_header_t));},              \
+{(header)->capacity = _ftb_da_new_cap;                                                        \
+ (header) = realloc(header, sizeof(*(da)) * header->capacity + sizeof(ftb_ptr_header_t));     \
+ (da) = (void*)(header + 1);})
+
+#define __ftb_da_append(da,item,func)        \
+    do {                                     \
+        func;                                \
+        ftb_da_count_inc(da);                \
+        (da)[ftb_da_count(da) - 1] = (item); \
     } while(0)
 
-#define ftb_raw_da_appends(da,items,items_count)                      \
-    do {                                                              \
-        ftb_raw_da_reserve((da),(items_count));                       \
-        u32 da_count = ((ftb_ptr_header_t*)(da)-1)->count;            \
-        memcpy((da) + da_count, (items), (items_count)*sizeof(*(da)));\
-        ((ftb_ptr_header_t*)(da)-1)->count += (items_count);          \
+#define __ftb_da_appends(da,items,items_count,func)                    \
+    do {                                                               \
+        func;                                                          \
+        memcpy((da) + ftb_da_count(da), (items), (items_count)*sizeof(*(da))); \
+        ftb_da_count_sum(da,items_count);                              \
     } while(0)
 
-#define ftb_da_appends(ctx,da,items,items_count)                      \
-    do {                                                              \
-        ftb_da_reserve((ctx),(da),(items_count));                     \
-        u32 da_count = ((ftb_ptr_header_t*)(da)-1)->count;            \
-        memcpy((da) + da_count, (items), (items_count)*sizeof(*(da)));\
-        ((ftb_ptr_header_t*)(da)-1)->count += (items_count);          \
-    } while(0)
+#define ftb_da_append(ctx,da,item) __ftb_da_append(da,item,{ftb_da_reserve((ctx),(da),1);})
+#define ftb_raw_da_append(da,item) __ftb_da_append(da,item,{ftb_raw_da_reserve((da),1);})
+
+#define ftb_raw_da_appends(da,items,items_count) \
+__ftb_da_appends(da,items,items_count,{ftb_raw_da_reserve((da),(items_count));})
+
+#define ftb_da_appends(ctx,da,items,items_count) \
+__ftb_da_appends(da,items,items_count,{ftb_da_reserve((ctx),(da),(items_count));})
 
 #define FTB_ADD_TEST(tests, fn)       \
     do {                              \
@@ -180,7 +170,7 @@ typedef uintptr_t   usize;
 
 #ifdef FTB_TEST_CRASH
 #define TEST_ASSERT(cond,msg)                   \
-do {                                        \
+do {                                            \
         if(!(cond)) {                           \
             fprintf(stderr,"[FAIL] %s:%d:%s: %s \n",__FILE__,__LINE__,__func__,msg); \
             exit(1);                            \
@@ -196,6 +186,41 @@ do {                                        \
     } while (0)
 
 #endif /* FTB_TEST_CRASH */
+
+#define FTB_MIN(a,b) ((a) < (b) ? (a) : (b))
+#define FTB_MAX(a,b) ((a) > (b) ? (a) : (b))
+#define FTB_CLAMP(x,min,max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
+#define FTB_SWAP(type,a,b) do { type tmp = (a);(a) = (b);(b) = tmp;} while(0)
+#define FTB_SWAP_PTR(a,b) do { void* tmp = (a); (a) = (b); (b) = tmp; } while(0)
+#define FTB_ZERO(x) memset(&(x),0,sizeof(x))
+#define FTB_UNUSED(x) (void)(x)
+#define FTB_CONCAT2(a,b) a##b
+#define FTB_CONCAT(a,b) CONCAT2(a,b)
+#define FTB_STRINGIFY(x) #x
+#define FTB_TOSTRING(x) STRINGIFY(x)
+#define FTB_KB(x) ((x)*1024ULL)
+#define FTB_MB(x) ((x)*1024ULL*1024ULL)
+#define FTB_GB(x) ((x)*1024ULL*1024ULL*1024ULL)
+#define FTB_BIT_SET(x,b) ((x) |= (1<<(b)))
+#define FTB_BIT_CLR(x,b) ((x) &= ~(1<<(b)))
+#define FTB_BIT_GET(x,b) (((x)>>(b))&1)
+#define FTB_BIT_TOGGLE(x,b) ((x) ^= (1<<(b)))
+#define FTB_BIT_MASK(x,mask) ((x) & (mask))
+#define FTB_BIT_CLEAR_MASK(x,mask) ((x) &= ~(mask))
+#define FTB_ALIGN_UP(x,a) (((x)+(a)-1) & ~((a)-1))
+#define FTB_ALIGN_DOWN(x,a) ((x) & ~((a)-1))
+#define FTB_ENUM_TO_STRING(val) #val
+
+#define ftb_scope(init, cleanup) \
+    for (int _i = ((init),0); !_i; ((cleanup),++_i))
+
+#define ftb_time_scope(name, code_block) \
+    do {                                 \
+        u64 _start = ftb_time_now_us();  \
+        code_block;                      \
+        u64 _end = ftb_time_now_us();    \
+        printf("[TIME] %s: %llu us\n", name, _end-_start); \
+    } while(0)
 
 typedef struct {
     u32 addr;
@@ -240,6 +265,16 @@ typedef struct {
  */
 
 #define TODO(msg) do { printf("%s:%d: To be done:%s\n",__FILE__,__LINE__,msg);abort();} while(0)
+#define UNIMPLEMENTED                                                               \
+    do {                                                                            \
+        fprintf(stderr,"%s:%d: %s is not implemented!",__FILE__,__LINE__,__func__); \
+        abort(0);                                                                   \
+    } while(0);
+
+#define scoped_ctx() \
+    for (ftb_ctx_t ctx = {0}, *pctx = &ctx, *_ftb_guard_##__LINE__ = &ctx; \
+         _ftb_guard_##__LINE__; \
+         ftb_mem_delete_ctx(pctx), _ftb_guard_##__LINE__ = NULL)
 
 FTBDEF bool ftb_tests_run(ftb_test_t* tests);
 FTBDEF bool ftb_tests_report(ftb_test_t* tests);
@@ -293,6 +328,14 @@ FTBDEF u32 ftb_str_len(ftb_str_t str);
         ftb_error_ret((!str2 || str1 == str2),false);     \
         ftb_da_appends(ctx,str1,str2,ftb_da_count(str2)); \
     } while(0)
+
+#define ftb_str_printf(ctx,fmt,...) ({              \
+    ftb_str_t _s = ftb_str_create(ctx);             \
+    int _needed = snprintf(NULL,0,fmt,__VA_ARGS__); \
+    ftb_da_reserve(ctx,_s,_needed+1);               \
+    snprintf(_s, _needed+1, fmt, __VA_ARGS__);      \
+    _s;                                             \
+})
 
 FTBDEF bool ftb_str_cmp_cstr(ftb_str_t str,char* cstr);
 FTBDEF bool ftb_str_cmp_str(ftb_str_t str,ftb_str_t cstr);
@@ -370,10 +413,9 @@ FTBDEF void* ftb_mem_alloc
 {
     assert(ctx);
     if(!bytes) return 0;
-    void* dangle = malloc(bytes + sizeof(ftb_ptr_header_t));
-    assert(dangle);
-    ftb_ptr_header_t* header = (ftb_ptr_header_t*)dangle;
-    void* ptr = ((ftb_ptr_header_t*)dangle + 1);
+    ftb_ptr_header_t* header = malloc(bytes + sizeof(ftb_ptr_header_t));
+    assert(header);
+    void* ptr = ((ftb_ptr_header_t*)header + 1);
     header->capacity = bytes;
     header->count = 0;
     ftb_raw_da_append(ctx->ptrs.items,ptr);
@@ -386,10 +428,9 @@ FTBDEF void* ftb_mem_zalloc
 {
     assert(ctx);
     if(!bytes) return 0;
-    void* dangle = calloc(1,bytes + sizeof(ftb_ptr_header_t));
-    assert(dangle);
-    ftb_ptr_header_t* header = (ftb_ptr_header_t*)dangle;
-    void* ptr = ((ftb_ptr_header_t*)dangle + 1);
+    ftb_ptr_header_t* header = calloc(1,bytes + sizeof(ftb_ptr_header_t));
+    assert(header);
+    void* ptr = ((ftb_ptr_header_t*)header + 1);
     header->capacity = bytes;
     header->count = 0;
     ftb_raw_da_append(ctx->ptrs.items,ptr);
@@ -404,7 +445,7 @@ FTBDEF void* ftb_mem_realloc
     if(!bytes && !ptr) {return 0;}
     if(!bytes && ptr) {ftb_mem_free(ctx,ptr); return 0;}
     if(!ptr && bytes) {return ftb_mem_zalloc(ctx,bytes);}
-    u32 cap = ((ftb_ptr_header_t*)ptr-1)->capacity;
+    u32 cap = ftb_da_capacity(ptr);
     if(cap == bytes) {return ptr;}
     void* da = 0;
     if(cap < bytes) {
@@ -423,7 +464,7 @@ FTBDEF void ftb_mem_free
 {
     assert(ctx);
     if(!ptr) return;
-    ftb_ptr_header_t* a = ((ftb_ptr_header_t*)ptr - 1);
+    ftb_ptr_header_t* a = ftb_da_header(ptr);
     u32 i = a->addr;
     free(a);
     ctx->ptrs.items[i-1] = 0;
@@ -449,7 +490,7 @@ FTBDEF void ftb_mem_delete_ctx
         for(u32 i = 0;i < ftb_da_count(ctx->ptrs.items);++i)
         {
             if(!ctx->ptrs.items[i]) {continue;}
-            void* ptr = (ftb_ptr_header_t*)ctx->ptrs.items[i] - 1;
+            void* ptr = ftb_da_header(ctx->ptrs.items[i]);
             free(ptr);
         }
         ftb_raw_da_free(ctx->ptrs.items);
@@ -473,7 +514,7 @@ FTBDEF void ftb_mem_cleanup
     isize stop = ctx->ptrs.marks[ftb_da_count(ctx->ptrs.marks)-1];
     for(;i >= stop;--i)
     {
-        void* ptr = (ftb_ptr_header_t*)ctx->ptrs.items[i] - 1;
+        void* ptr = ftb_da_header(ctx->ptrs.items[i]);
         free(ptr);
         ctx->ptrs.items[i] = 0;
         ftb_da_count_dec(ctx->ptrs.items);
