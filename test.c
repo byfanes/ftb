@@ -812,12 +812,12 @@ bool test_path_join_cstr(void) {
 
     const char* p1 = "dir";
     const char* p2 = "file.txt";
-    TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, p1, strlen(p1), p2, strlen(p2)), "join normal");
+    TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, p1, p2), "join normal");
     TEST_ASSERT(strcmp(out, "dir/file.txt") == 0, "join normal match");
 
     const char* p3 = "dir/";
     const char* p4 = "/file.txt";
-    TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, p3, strlen(p3), p4, strlen(p4)), "join with multiple slashes");
+    TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, p3, p4), "join with multiple slashes");
     TEST_ASSERT(strcmp(out, "dir/file.txt") == 0, "join multiple slashes match");
 
     ftb_mem_delete_ctx(&ctx);
@@ -878,7 +878,7 @@ bool test_path_fs_operations(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t out = ftb_str_create(&ctx);
 
-    TEST_ASSERT(ftb_path_cwd(&ctx, &out), "get cwd");
+    TEST_ASSERT(ftb_path_cwd_get(&ctx, &out), "get cwd");
     TEST_ASSERT(ftb_str_len(out) > 0, "cwd string populated");
 
     const char* current_dir = ".";

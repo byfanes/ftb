@@ -6,12 +6,38 @@
 #define FTB_FS_SEP '\\'
     #include <windows.h>
     #warning "Doesnt fully support windows and havent done any test for it yet!"
+    #define FTB_IS_OS_WINDOW true
+    #define FTB_IS_OS_POISX false
 #else /* _WIN32 */
     #define FTB_FS_SEP '/'
     #include <sys/stat.h>
     #include <unistd.h>
     #include <limits.h>
+    #include <errno.h>
+    #include <dirent.h>
+    #define FTB_IS_OS_WINDOW false
+    #define FTB_IS_OS_POISX true
 #endif /* _WIN32 */
+
+#if defined(_WIN32)
+    #define FTB_PLATFORM_NAME "Windows";
+#elif defined(__APPLE__)
+    #define FTB_PLATFORM_NAME "macOS";
+#elif defined(__linux__)
+    #define FTB_PLATFORM_NAME "Linux";
+#else
+    #define FTB_PLATFORM_NAME "Unknown";
+#endif
+
+#if defined(__x86_64__) || defined(_M_X64)
+    #define FTB_ARCH_NAME "x86_64"
+#elif defined(__aarch64__)
+    #define FTB_ARCH_NAME "arm64"
+#elif defined(__i386__) || defined(_M_IX86)
+    #define FTB_ARCH_NAME "x86"
+#else
+    #define FTB_ARCH_NAME "unknown"
+#endif
 
 #ifndef FTBDEF
 #define FTBDEF
@@ -88,6 +114,9 @@ typedef uintptr_t   usize;
 #define ftb_da_set_capacity(da,x) do{ (ftb_da_header(da))->capacity = (x);} while(0)
 #define ftb_raw_da_free(da) free(ftb_da_header(da))
 #define ftb_da_clamp_id(da,x) CLAMP((x), 0, (ftb_da_count(arr)-1))
+#define ftb_da_foreach(type_ptr, it, da) \
+    for (type_ptr it = (da); (da) != NULL && it < (da) + ftb_da_count(da); ++it)
+#define ftb_da_empty(da) ((da) == NULL || ftb_da_count(da) == 0)
 
 #define __ftb_da_reserve(da,amount,func_alloc,func_realloc)  \
     do {                                                     \
@@ -211,6 +240,11 @@ do {                                            \
 #define FTB_ALIGN_DOWN(x,a) ((x) & ~((a)-1))
 #define FTB_ENUM_TO_STRING(val) #val
 
+#define FTB_IS_POW2(x) (((x) != 0) && (((x) & ((x) - 1)) == 0))
+#define FTB_OFFSET_OF(type, member) ((usize)&(((type*)0)->member))
+#define FTB_CONTAINER_OF(ptr, type, member) \
+    ((type *)((char *)(ptr) - FTB_OFFSET_OF(type, member)))
+
 #define ftb_scope(init, cleanup) \
     for (int _i = ((init),0); !_i; ((cleanup),++_i))
 
@@ -271,7 +305,7 @@ typedef struct {
         abort(0);                                                                   \
     } while(0);
 
-#define scoped_ctx() \
+#define ftb_scoped_ctx \
     for (ftb_ctx_t ctx = {0}, *pctx = &ctx, *_ftb_guard_##__LINE__ = &ctx; \
          _ftb_guard_##__LINE__; \
          ftb_mem_delete_ctx(pctx), _ftb_guard_##__LINE__ = NULL)
@@ -311,16 +345,16 @@ FTBDEF u32 ftb_str_len(ftb_str_t str);
 #define ftb_str_len(str) ftb_da_count(str)
 #define ftb_free_raw_str(str) ftb_da_free(str)
 
-#define ftb_str_append_cstr_n(ctx,str,cstr,n)             \
-    do {                                                  \
-        ftb_error_ret(!cstr,false);                       \
-        ftb_da_appends(ctx,str,cstr,n);                   \
+#define ftb_str_append_cstr_n(ctx,str,cstr,n) \
+    do {                                      \
+        ftb_error_ret(!cstr,false);           \
+        ftb_da_appends(ctx,str,cstr,n);       \
     } while (0)
 
-#define ftb_str_append_cstr(ctx,str,cstr)                 \
-    do {                                                  \
-        ftb_error_ret(!cstr,false);                       \
-        ftb_da_appends(ctx,str,cstr,strlen(cstr));        \
+#define ftb_str_append_cstr(ctx,str,cstr)          \
+    do {                                           \
+        ftb_error_ret(!cstr,false);                \
+        ftb_da_appends(ctx,str,cstr,strlen(cstr)); \
     } while (0)
 
 #define ftb_str_append_str(ctx,str1,str2)                 \
@@ -373,12 +407,17 @@ bool ftb_path_dirname(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
 bool ftb_path_extension(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
 bool ftb_path_stem(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
 
-bool ftb_path_join_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len1, const char* p2, u32 len2);
+bool ftb_path_join_cstr
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, const char* p2);
+bool ftb_path_join_cstr_n
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len1, const char* p2, u32 len2);
 bool ftb_path_join(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t p1, ftb_path_t p2);
 bool ftb_path_normalize_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len);
 bool ftb_path_normalize(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path);
-bool ftb_path_with_extension_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len, const char* ext, u32 ext_len);
-bool ftb_path_with_extension(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path, ftb_path_t ext);
+bool ftb_path_with_extension_cstr
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len, const char* ext, u32 ext_len);
+bool ftb_path_with_extension
+(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path, ftb_path_t ext);
 
 bool ftb_path_is_absolute_cstr(const char* path, u32 len);
 bool ftb_path_is_absolute(ftb_path_t path);
@@ -395,12 +434,31 @@ bool ftb_path_is_dir(ftb_ctx_t* ctx, ftb_path_t path);
 bool ftb_path_absolute_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len);
 bool ftb_path_absolute(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path);
 
-bool ftb_path_cwd(ftb_ctx_t* ctx, ftb_path_t* out);
+bool ftb_path_cwd_get(ftb_ctx_t* ctx, ftb_path_t* out);
+bool ftb_path_cwd_set(const char* path);
+bool ftb_path_rename(const char* from,const char* to);
 
 u64 ftb_time_now_ms(void);
 u64 ftb_time_now_us(void);
 f64 ftb_time_now_sec(void);
 void ftb_time_sleep_ms(u32);
+
+typedef u8* ftb_bytes_t;
+
+ftb_bytes_t ftb_file_read(ftb_ctx_t* ctx,const char* path);
+bool ftb_file_write(const char* path, ftb_bytes_t data);
+bool ftb_file_write_cstr(const char* path, const char* data);
+bool ftb_file_write_cstr_n(const char* path, const void* data, size_t size);
+i64 ftb_file_size(const char* path);
+bool ftb_file_remove(const char* path);
+bool ftb_file_exists(const char* path);
+i64 ftb_file_mtime(const char* path);
+bool ftb_file_copy(const char* from,const char* to);
+bool ftb_dir_exists(const char* path);
+bool ftb_dir_mkdir(const char* path);
+bool ftb_dir_mkdir_ifnot_exists(const char* path);
+bool ftb_dir_list_dir
+(const char* path, void (*callback)(const char*,bool,void*), void* user);
 
 #endif /* FTB_H_ */
 
@@ -752,7 +810,8 @@ FTBDEF bool ftb_str_contains_str
     return (ftb_str_find_str(str,needle) != -1);
 }
 
-FTBDEF bool ftb_str_remove_range(ftb_str_t str, u32 start, u32 len)
+FTBDEF bool ftb_str_remove_range
+(ftb_str_t str, u32 start, u32 len)
 {
     ftb_error_ret(!str,false);
     if(start >= ftb_da_count(str)) {return true;}
@@ -1140,7 +1199,16 @@ bool ftb_path_stem
     return ftb_path_stem_cstr(ctx,out,path,ftb_str_len(path));
 }
 
-bool ftb_path_join_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len1, const char* p2, u32 len2) {
+bool ftb_path_join_cstr
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, const char* p2)
+{
+    ftb_error_ret((!ctx || !out || !p1 || !p2), false);
+    return ftb_path_join_cstr_n(ctx,out,p1,strlen(p1),p2,strlen(p2));
+}
+
+bool ftb_path_join_cstr_n
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len1, const char* p2, u32 len2)
+{
     ftb_error_ret((!ctx || !out || (!p1 && !p2)), false);
     ftb_str_clear(*out);
     if (p1 && len1 > 0) {
@@ -1162,11 +1230,15 @@ bool ftb_path_join_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len
     return true;
 }
 
-bool ftb_path_join(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t p1, ftb_path_t p2) {
-    return ftb_path_join_cstr(ctx, out, p1, ftb_str_len(p1), p2, ftb_str_len(p2));
+bool ftb_path_join
+(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t p1, ftb_path_t p2)
+{
+    return ftb_path_join_cstr_n(ctx, out, p1, ftb_str_len(p1), p2, ftb_str_len(p2));
 }
 
-bool ftb_path_normalize_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len) {
+bool ftb_path_normalize_cstr
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len)
+{
     ftb_error_ret((!ctx || !path || !out), false);
     ftb_str_clear(*out);
     if (len == 0) return true;
@@ -1219,11 +1291,15 @@ bool ftb_path_normalize_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, 
     return true;
 }
 
-bool ftb_path_normalize(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path) {
+bool ftb_path_normalize
+(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path)
+{
     return ftb_path_normalize_cstr(ctx, out, path, ftb_str_len(path));
 }
 
-bool ftb_path_with_extension_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len, const char* ext, u32 ext_len) {
+bool ftb_path_with_extension_cstr
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len, const char* ext, u32 ext_len)
+{
     ftb_error_ret((!ctx || !path || !out || !ext), false);
     ftb_str_clear(*out);
     ftb_str_cut_t dot = ftb_str_sepc_cstr_rev_wout('.', FTB_FS_SEP, path, len);
@@ -1239,46 +1315,65 @@ bool ftb_path_with_extension_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p
     return true;
 }
 
-bool ftb_path_with_extension(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path, ftb_path_t ext) {
-    return ftb_path_with_extension_cstr(ctx, out, path, ftb_str_len(path), ext, ftb_str_len(ext));
+bool ftb_path_with_extension
+(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path, ftb_path_t ext)
+{
+    return ftb_path_with_extension_cstr
+    (ctx, out, path, ftb_str_len(path), ext, ftb_str_len(ext));
 }
 
-bool ftb_path_is_absolute_cstr(const char* path, u32 len) {
+bool ftb_path_is_absolute_cstr
+(const char* path, u32 len)
+{
     if (!path || len == 0) return false;
     return path[0] == FTB_FS_SEP;
 }
 
-bool ftb_path_is_absolute(ftb_path_t path) {
+bool ftb_path_is_absolute
+(ftb_path_t path)
+{
     return ftb_path_is_absolute_cstr(path, ftb_str_len(path));
 }
 
-bool ftb_path_is_relative_cstr(const char* path, u32 len) {
+bool ftb_path_is_relative_cstr
+(const char* path, u32 len)
+{
     if (!path || len == 0) return true;
     return !ftb_path_is_absolute_cstr(path, len);
 }
 
-bool ftb_path_is_relative(ftb_path_t path) {
+bool ftb_path_is_relative
+(ftb_path_t path)
+{
     return ftb_path_is_relative_cstr(path, ftb_str_len(path));
 }
 
-bool ftb_path_has_extension_cstr(const char* path, u32 len) {
+bool ftb_path_has_extension_cstr
+(const char* path, u32 len)
+{
     if (!path || len == 0) return false;
     ftb_str_cut_t dot = ftb_str_sepc_cstr_rev_wout('.', FTB_FS_SEP, path, len);
     return dot.ptr != NULL;
 }
 
-bool ftb_path_has_extension(ftb_path_t path) {
+bool ftb_path_has_extension
+(ftb_path_t path)
+{
     return ftb_path_has_extension_cstr(path, ftb_str_len(path));
 }
 
-static char* _ftb_path_temp_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
+static char* _ftb_path_temp_cstr
+(ftb_ctx_t* ctx, const char* path, u32 len)
+{
     char* tmp = ftb_mem_alloc(ctx, len + 1);
     memcpy(tmp, path, len);
     tmp[len] = '\0';
     return tmp;
 }
 
-bool ftb_path_exists_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
+bool ftb_path_exists_cstr
+(ftb_ctx_t* ctx, const char* path, u32 len)
+{
     if (!ctx || !path || len == 0) return false;
     char* tmp = _ftb_path_temp_cstr(ctx, path, len);
 #ifdef _WIN32
@@ -1293,11 +1388,15 @@ bool ftb_path_exists_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
 #endif
 }
 
-bool ftb_path_exists(ftb_ctx_t* ctx, ftb_path_t path) {
+bool ftb_path_exists
+(ftb_ctx_t* ctx, ftb_path_t path)
+{
     return ftb_path_exists_cstr(ctx, path, ftb_str_len(path));
 }
 
-bool ftb_path_is_file_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
+bool ftb_path_is_file_cstr
+(ftb_ctx_t* ctx, const char* path, u32 len)
+{
     if (!ctx || !path || len == 0) return false;
     char* tmp = _ftb_path_temp_cstr(ctx, path, len);
 #ifdef _WIN32
@@ -1312,11 +1411,15 @@ bool ftb_path_is_file_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
 #endif
 }
 
-bool ftb_path_is_file(ftb_ctx_t* ctx, ftb_path_t path) {
+bool ftb_path_is_file
+(ftb_ctx_t* ctx, ftb_path_t path)
+{
     return ftb_path_is_file_cstr(ctx, path, ftb_str_len(path));
 }
 
-bool ftb_path_is_dir_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
+bool ftb_path_is_dir_cstr
+(ftb_ctx_t* ctx, const char* path, u32 len)
+{
     if (!ctx || !path || len == 0) return false;
     char* tmp = _ftb_path_temp_cstr(ctx, path, len);
 #ifdef _WIN32
@@ -1331,11 +1434,15 @@ bool ftb_path_is_dir_cstr(ftb_ctx_t* ctx, const char* path, u32 len) {
 #endif
 }
 
-bool ftb_path_is_dir(ftb_ctx_t* ctx, ftb_path_t path) {
+bool ftb_path_is_dir
+(ftb_ctx_t* ctx, ftb_path_t path)
+{
     return ftb_path_is_dir_cstr(ctx, path, ftb_str_len(path));
 }
 
-bool ftb_path_absolute_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len) {
+bool ftb_path_absolute_cstr
+(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len)
+{
     ftb_error_ret((!ctx || !path || !out), false);
     ftb_str_clear(*out);
     char* tmp = _ftb_path_temp_cstr(ctx, path, len);
@@ -1356,11 +1463,32 @@ bool ftb_path_absolute_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u
     return true;
 }
 
-bool ftb_path_absolute(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path) {
+bool ftb_path_absolute
+(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path)
+{
     return ftb_path_absolute_cstr(ctx, out, path, ftb_str_len(path));
 }
 
-bool ftb_path_cwd(ftb_ctx_t* ctx, ftb_path_t* out) {
+bool ftb_path_rename
+(const char* from,const char* to)
+{
+    ftb_error_ret((!from || !to), false);
+    return rename(from,to)==0;
+}
+
+bool ftb_path_cwd_set
+(const char* path)
+{
+#ifdef _WIN32
+    return _chdir(path)==0;
+#else
+    return chdir(path)==0;
+#endif
+}
+
+bool ftb_path_cwd_get
+(ftb_ctx_t* ctx, ftb_path_t* out)
+{
     ftb_error_ret((!ctx || !out), false);
     ftb_str_clear(*out);
 #ifdef _WIN32
@@ -1403,7 +1531,9 @@ u64 ftb_time_now_us
     QueryPerformanceFrequency(&freq); QueryPerformanceCounter(&t);
     return (u64)(t.QuadPart*1000000/freq.QuadPart);
 #else
-    struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); return (u64)ts.tv_sec*1000000+ts.tv_nsec/1000;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME,&ts);
+    return (u64)ts.tv_sec*1000000+ts.tv_nsec/1000;
 #endif
 }
 
@@ -1422,6 +1552,187 @@ void ftb_time_sleep_ms
     usleep(ms*1000);
 #endif
 }
+
+bool ftb_file_exists
+(const char* path)
+{
+    ftb_error_ret(!path, false);
+#ifdef _WIN32
+    DWORD attr = GetFileAttributesA(path);
+    return (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    return access(path,F_OK)==0;
+#endif
+}
+
+bool ftb_file_copy
+(const char* from,const char* to)
+{
+    ftb_error_ret((!from || !to), false);
+    bool ok = true;
+    ftb_scoped_ctx{
+        ftb_bytes_t data = ftb_file_read(pctx,from);
+        if(!data) {ok = false;break;}
+        ok = ftb_file_write(to,data);
+    }
+    return ok;
+}
+
+bool ftb_dir_exists
+(const char* path)
+{
+    ftb_error_ret(!path, false);
+#ifdef _WIN32
+    DWORD attr = GetFileAttributesA(path);
+    return (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat s;
+    return stat(path,&s)==0 && S_ISDIR(s.st_mode);
+#endif
+}
+
+bool ftb_dir_mkdir
+(const char* path)
+{
+    ftb_error_ret(!path, false);
+#ifdef _WIN32
+    return _mkdir(path)==0 || errno==EEXIST;
+#else
+    return mkdir(path,0755)==0 || errno==EEXIST;
+#endif
+}
+
+bool ftb_dir_mkdir_ifnot_exists
+(const char* path)
+{
+    ftb_error_ret(!path, false);
+    if(!ftb_dir_exists(path)) {
+        return ftb_dir_mkdir(path);
+    }
+    return true;
+}
+
+bool ftb_file_remove
+(const char* path)
+{
+    ftb_error_ret(!path, false);
+#ifdef _WIN32
+    return DeleteFileA(path);
+#else
+    return unlink(path)==0;
+#endif
+}
+
+i64 ftb_file_size
+(const char* path)
+{
+    ftb_error_ret(!path, false);
+    FILE* f = fopen(path,"rb");
+    if(!f) {return -1;}
+    fseek(f,0,SEEK_END);
+    i64 size=ftell(f);
+    fclose(f);
+    return size;
+}
+
+ftb_bytes_t ftb_file_read
+(ftb_ctx_t* ctx,const char* path)
+{
+    ftb_error_ret((!ctx || !path), false);
+    ftb_bytes_t bytes = 0;
+    FILE* fptr = fopen(path,"rb");
+    if(!fptr) {return 0;}
+    fseek(fptr,0,SEEK_END);
+    i64 size=ftell(fptr);
+    rewind(fptr);
+    if(size == -1) {
+        fclose(fptr);
+        return 0;
+    }
+    ftb_da_reserve(ctx,bytes,size);
+    ftb_da_set_count(bytes,size);
+    if(fread(bytes,size,1,fptr) != 1) {
+        bytes = 0;
+    }
+    fclose(fptr);
+    return bytes;
+}
+
+bool ftb_file_write
+(const char* path, ftb_bytes_t data)
+{
+    ftb_error_ret((!path || !data),false);
+    return ftb_file_write_cstr_n(path,data,ftb_da_count(data));
+}
+
+bool ftb_file_write_cstr
+(const char* path, const char* data)
+{
+    ftb_error_ret((!path || !data),false);
+    return ftb_file_write_cstr_n(path,data,strlen(data));
+}
+
+bool ftb_file_write_cstr_n
+(const char* path, const void* data, size_t size)
+{
+    ftb_error_ret((!path || !data),false);
+    if(size == 0) return true;
+    FILE* fptr = fopen(path,"wb");
+    if(!fptr) {return false;}
+    if(fwrite(data,size,1,fptr) != 1) {
+        fclose(fptr);
+        return false;
+    }
+    fclose(fptr);
+    return true;
+}
+
+i64 ftb_file_mtime
+(const char* path)
+{
+    ftb_error_ret(!path, -1);
+#ifdef _WIN32
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if(!GetFileAttributesExA(path,GetFileExInfoStandard,&data))
+    {return -1;}
+    ULARGE_INTEGER t;
+    t.LowPart=data.ftLastWriteTime.dwLowDateTime;
+    t.HighPart=data.ftLastWriteTime.dwHighDateTime;
+    return (i64)(t.QuadPart/10000ULL);
+#else
+    struct stat s;
+    if(stat(path,&s)<0) {return -1;}
+    return (i64)s.st_mtime*1000;
+#endif
+}
+
+bool ftb_dir_list_dir
+(const char* path, void (*callback)(const char*,bool,void*), void* user)
+{
+#ifdef _WIN32
+    char search[512];
+    snprintf(search,512,"%s\\*",path);
+    WIN32_FIND_DATAA fd;
+    HANDLE h=FindFirstFileA(search,&fd);
+    if(h==INVALID_HANDLE_VALUE) {return false;}
+    do {
+        if(strcmp(fd.cFileName,".") && strcmp(fd.cFileName,".."))
+        {callback(fd.cFileName,(fd.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0,user);}
+    } while(FindNextFileA(h,&fd));
+    FindClose(h);
+#else
+    DIR* d=opendir(path);
+    if(!d) {return false;}
+    struct dirent* e;
+    while((e=readdir(d))) {
+        if(strcmp(e->d_name,".") && strcmp(e->d_name,".."))
+        {callback(e->d_name,(e->d_type==DT_DIR),user);}
+    }
+    closedir(d);
+#endif
+    return true;
+}
+
 
 #endif /* FTB_FIRST_IMPLEMENTATION */
 #endif /* FTB_IMPLEMENTATION */
