@@ -895,6 +895,356 @@ bool test_path_fs_operations(void) {
 
 /*
  * ==========================================
+ * MACROS & MATH TESTS
+ * ==========================================
+ */
+
+bool test_math_macros(void) {
+    TEST_ASSERT(FTB_MIN(5, 10) == 5, "FTB_MIN");
+    TEST_ASSERT(FTB_MAX(5, 10) == 10, "FTB_MAX");
+    TEST_ASSERT(FTB_CLAMP(15, 0, 10) == 10, "FTB_CLAMP upper bounds");
+    TEST_ASSERT(FTB_CLAMP(-5, 0, 10) == 0, "FTB_CLAMP lower bounds");
+    TEST_ASSERT(FTB_CLAMP(5, 0, 10) == 5, "FTB_CLAMP inside bounds");
+
+    int a = 1, b = 2;
+    FTB_SWAP(int, a, b);
+    TEST_ASSERT(a == 2 && b == 1, "FTB_SWAP values");
+
+    void* p1 = (void*)0x100;
+    void* p2 = (void*)0x200;
+    FTB_SWAP_PTR(p1, p2);
+    TEST_ASSERT(p1 == (void*)0x200 && p2 == (void*)0x100, "FTB_SWAP_PTR values");
+
+    TEST_ASSERT(FTB_ALIGN_UP(13, 8) == 16, "FTB_ALIGN_UP");
+    TEST_ASSERT(FTB_ALIGN_DOWN(13, 8) == 8, "FTB_ALIGN_DOWN");
+    TEST_ASSERT(FTB_IS_POW2(16), "FTB_IS_POW2 for true");
+    TEST_ASSERT(!FTB_IS_POW2(15), "FTB_IS_POW2 for false");
+
+    TEST_RESULT(true);
+}
+
+bool test_bit_macros(void) {
+    u32 flags = 0;
+    FTB_BIT_SET(flags, 3);
+    TEST_ASSERT(flags == 8, "FTB_BIT_SET");
+    TEST_ASSERT(FTB_BIT_GET(flags, 3) == 1, "FTB_BIT_GET true");
+    TEST_ASSERT(FTB_BIT_GET(flags, 2) == 0, "FTB_BIT_GET false");
+
+    FTB_BIT_CLR(flags, 3);
+    TEST_ASSERT(flags == 0, "FTB_BIT_CLR");
+
+    FTB_BIT_TOGGLE(flags, 1);
+    TEST_ASSERT(flags == 2, "FTB_BIT_TOGGLE set");
+    FTB_BIT_TOGGLE(flags, 1);
+    TEST_ASSERT(flags == 0, "FTB_BIT_TOGGLE clear");
+
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * DA ADVANCED TESTS
+ * ==========================================
+ */
+
+bool test_da_foreach(void) {
+    int* arr = NULL;
+    ftb_raw_da_append(arr, 10);
+    ftb_raw_da_append(arr, 20);
+    ftb_raw_da_append(arr, 30);
+
+    int sum = 0;
+    ftb_da_foreach(int*, it, arr) {
+        sum += *it;
+    }
+    TEST_ASSERT(sum == 60, "ftb_da_foreach computes correct sum");
+
+    ftb_raw_da_free(arr);
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * STR ADVANCED TESTS
+ * ==========================================
+ */
+
+#ifdef __GNUC__
+bool test_str_printf(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_mem_set_mark(&ctx);
+
+    ftb_str_t s = ftb_str_printf(&ctx, "Hello %d %s", 42, "World");
+    TEST_ASSERT(s != NULL, "str_printf created string");
+    
+    /* ftb_str_printf relies on standard snprintf, string is null terminated. 
+       Note: Macro does not increment da_count, so we assert via strcmp */
+    TEST_ASSERT(strcmp(s, "Hello 42 World") == 0, "str_printf content matches");
+
+    ftb_mem_delete_ctx(&ctx);
+    TEST_RESULT(true);
+}
+#endif
+
+/*
+ * ==========================================
+ * FILE I/O AND DIR TESTS
+ * ==========================================
+ */
+
+bool test_file_io(void) {
+    const char* test_file = "test_ftb_io.txt";
+    const char* content = "Hello File IO";
+
+    ftb_file_remove(test_file); 
+    TEST_ASSERT(!ftb_file_exists(test_file), "File should not exist initially");
+
+    TEST_ASSERT(ftb_file_write_cstr(test_file, content), "Write cstr to file");
+    TEST_ASSERT(ftb_file_exists(test_file), "File should exist after writing");
+
+    i64 size = ftb_file_size(test_file);
+    TEST_ASSERT(size == (i64)strlen(content), "File size should match content length");
+
+    ftb_ctx_t ctx = {0};
+    ftb_bytes_t data = ftb_file_read(&ctx, test_file);
+    TEST_ASSERT(data != NULL, "Read file must not be NULL");
+    TEST_ASSERT(ftb_da_count(data) == (u32)size, "Read data DA count match");
+    TEST_ASSERT(strncmp((char*)data, content, size) == 0, "Read content match");
+
+    TEST_ASSERT(ftb_file_remove(test_file), "Remove file successfully");
+    TEST_ASSERT(!ftb_file_exists(test_file), "File should be gone");
+
+    ftb_mem_delete_ctx(&ctx);
+    TEST_RESULT(true);
+}
+
+bool test_file_copy_and_mtime(void) {
+    const char* src = "test_src.txt";
+    const char* dst = "test_dst.txt";
+    
+    ftb_file_write_cstr(src, "copy me");
+    
+    TEST_ASSERT(ftb_file_copy(src, dst), "File copy success");
+    TEST_ASSERT(ftb_file_exists(dst), "Dest file exists after copy");
+    
+    i64 mtime_src = ftb_file_mtime(src);
+    i64 mtime_dst = ftb_file_mtime(dst);
+    
+    TEST_ASSERT(mtime_src > 0, "Source mtime valid");
+    TEST_ASSERT(mtime_dst > 0, "Dest mtime valid");
+    
+    ftb_file_remove(src);
+    ftb_file_remove(dst);
+    TEST_RESULT(true);
+}
+
+bool test_dir_operations(void) {
+    const char* test_dir = "test_ftb_dir";
+
+#ifdef _WIN32
+    RemoveDirectoryA(test_dir);
+#else
+    rmdir(test_dir);
+#endif
+
+    TEST_ASSERT(!ftb_dir_exists(test_dir), "Dir should not exist initially");
+
+    TEST_ASSERT(ftb_dir_mkdir(test_dir), "Create directory");
+    TEST_ASSERT(ftb_dir_exists(test_dir), "Directory should exist");
+
+    TEST_ASSERT(ftb_dir_mkdir_ifnot_exists(test_dir), "Create existing directory safely");
+
+#ifdef _WIN32
+    RemoveDirectoryA(test_dir);
+#else
+    rmdir(test_dir);
+#endif
+    TEST_ASSERT(!ftb_dir_exists(test_dir), "Dir should be removed");
+
+    TEST_RESULT(true);
+}
+
+static int g_file_count = 0;
+static void test_list_callback(const char* name, bool is_dir, void* user) {
+    (void)is_dir; (void)user;
+    if (name) g_file_count++;
+}
+
+bool test_dir_list(void) {
+    const char* test_dir = "test_ftb_list_dir";
+    ftb_dir_mkdir(test_dir);
+    
+    ftb_file_write_cstr("test_ftb_list_dir/f1.txt", "1");
+    ftb_file_write_cstr("test_ftb_list_dir/f2.txt", "2");
+
+    g_file_count = 0;
+    TEST_ASSERT(ftb_dir_list_dir(test_dir, test_list_callback, NULL), "List dir success");
+    TEST_ASSERT(g_file_count == 2, "Found 2 files inside dir");
+
+    ftb_file_remove("test_ftb_list_dir/f1.txt");
+    ftb_file_remove("test_ftb_list_dir/f2.txt");
+#ifdef _WIN32
+    RemoveDirectoryA(test_dir);
+#else
+    rmdir(test_dir);
+#endif
+
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * LOGGING TESTS
+ * ==========================================
+ */
+
+bool test_logger(void) {
+    ftb_ctx_t ctx = {0};
+    const char* log_file = "test_ftb_log.txt";
+
+    TEST_ASSERT(ftb_log_set_log_file_path(&ctx, log_file), "Set log file path");
+    
+    ftb_log_set_log_level(&ctx, ftb_log_level_info);
+    TEST_ASSERT(ftb_log_info(&ctx, "This is an info log"), "Log info");
+    TEST_ASSERT(ftb_log_warn(&ctx, "This is a warning log"), "Log warn");
+    TEST_ASSERT(ftb_log_error(&ctx, "This is an error log"), "Log error");
+
+    ftb_mem_delete_ctx(&ctx);
+
+    i64 size = ftb_file_size(log_file);
+    TEST_ASSERT(size > 0, "Log file should contain data");
+    
+    ftb_file_remove(log_file);
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * TIME TESTS
+ * ==========================================
+ */
+
+bool test_time_sleep(void) {
+    u64 start = ftb_time_now_ms();
+    ftb_time_sleep_ms(30);
+    u64 end = ftb_time_now_ms();
+
+    TEST_ASSERT(end >= start + 20, "Sleep duration should be at least ~30ms");
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * SCOPE TESTS
+ * ==========================================
+ */
+
+bool test_scoped_ctx(void) {
+    ftb_scoped_ctx {
+        void* ptr = ftb_mem_alloc(pctx, 1024);
+        TEST_ASSERT(ptr != NULL, "Alloc within scoped context");
+        TEST_ASSERT(ftb_da_count(pctx->ptrs.items) == 1, "Count is 1 in scoped ctx");
+    }
+    // No easy way to assert destruction without hacking globals,
+    // but a successful compilation & execution without leak crash proves correct syntax & flow.
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * STRUCT & POINTER MACROS
+ * ==========================================
+ */
+typedef struct {
+    int id;
+    float value;
+    char name[16];
+} ftb_test_struct_t;
+
+bool test_struct_macros(void) {
+    ftb_test_struct_t obj;
+    FTB_ZERO(obj);
+    TEST_ASSERT(obj.id == 0 && obj.value == 0.0f && obj.name[0] == '\0', "FTB_ZERO clears struct");
+
+    float* val_ptr = &obj.value;
+    ftb_test_struct_t* recovered = FTB_CONTAINER_OF(val_ptr, ftb_test_struct_t, value);
+    TEST_ASSERT(recovered == &obj, "FTB_CONTAINER_OF resolves parent pointer accurately");
+
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * PATH & CWD EDGE CASES
+ * ==========================================
+ */
+bool test_path_rename_and_cwd(void) {
+    ftb_ctx_t ctx = {0};
+    
+    /* Test rename */
+    ftb_file_write_cstr("ftb_old_name.txt", "rename me");
+    TEST_ASSERT(ftb_path_rename("ftb_old_name.txt", "ftb_new_name.txt"), "Rename file success");
+    TEST_ASSERT(!ftb_file_exists("ftb_old_name.txt"), "Old file should no longer exist");
+    TEST_ASSERT(ftb_file_exists("ftb_new_name.txt"), "New file should exist");
+    ftb_file_remove("ftb_new_name.txt");
+
+    /* Test CWD changing */
+    ftb_path_t current_dir = ftb_str_create(&ctx);
+    TEST_ASSERT(ftb_path_cwd_get(&ctx, &current_dir), "Get CWD");
+    
+    TEST_ASSERT(ftb_path_cwd_set(".."), "Change CWD to parent directory");
+    TEST_ASSERT(ftb_path_cwd_set(current_dir), "Restore original CWD");
+
+    ftb_mem_delete_ctx(&ctx);
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * MEMORY & LOGGING EDGE CASES
+ * ==========================================
+ */
+bool test_mem_realloc_to_zero(void) {
+    ftb_ctx_t ctx = {0};
+    void* ptr = ftb_mem_alloc(&ctx, 64);
+    TEST_ASSERT(ptr != NULL, "Allocated 64 bytes");
+    
+    void* ptr2 = ftb_mem_realloc(&ctx, ptr, 0);
+    TEST_ASSERT(ptr2 == NULL, "Realloc to 0 bytes returns NULL (acts as free)");
+    
+    ftb_mem_delete_ctx(&ctx);
+    TEST_RESULT(true);
+}
+
+bool test_logger_toggles(void) {
+    ftb_ctx_t ctx = {0};
+    
+    ftb_log_set_timestap(&ctx, true);
+    TEST_ASSERT(ctx.loger.timestaps == true, "Set timestamp true");
+    
+    ftb_log_toogle_timestap(&ctx);
+    TEST_ASSERT(ctx.loger.timestaps == false, "Toggle timestamp false");
+
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
+ * TIME RESOLUTION TESTS
+ * ==========================================
+ */
+bool test_time_resolution(void) {
+    u64 t_us = ftb_time_now_us();
+    f64 t_sec = ftb_time_now_sec();
+    
+    TEST_ASSERT(t_us > 0, "Microseconds time is valid");
+    TEST_ASSERT(t_sec > 0.0, "Seconds time is valid");
+    
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
  * MAIN ENTRY POINT
  * ==========================================
  */
@@ -936,11 +1286,13 @@ int main(void)
     FTB_ADD_TEST(tests, test_str_case_symbols);
     FTB_ADD_TEST(tests, test_str_null_handling);
     FTB_ADD_TEST(tests, test_str_append_loop);
+    FTB_ADD_TEST(tests, test_str_printf);
 
     /* --- Dynamic Array Tests --- */
     FTB_ADD_TEST(tests, test_raw_da_macros);
     FTB_ADD_TEST(tests, test_managed_da_macros);
     FTB_ADD_TEST(tests, test_da_count_macros);
+    FTB_ADD_TEST(tests, test_da_foreach);
 
     /* --- Path Tests --- */
     FTB_ADD_TEST(tests, test_path_basename);
@@ -955,6 +1307,29 @@ int main(void)
     FTB_ADD_TEST(tests, test_path_with_extension_cstr);
     FTB_ADD_TEST(tests, test_path_info_cstr);
     FTB_ADD_TEST(tests, test_path_fs_operations);
+    FTB_ADD_TEST(tests, test_path_info_cstr);
+    FTB_ADD_TEST(tests, test_path_fs_operations);
+
+    /* File I/O & Directory Tests */
+    FTB_ADD_TEST(tests, test_file_io);
+    FTB_ADD_TEST(tests, test_file_copy_and_mtime);
+    FTB_ADD_TEST(tests, test_dir_operations);
+    FTB_ADD_TEST(tests, test_dir_list);
+
+    /* Subsystem Tests */
+    FTB_ADD_TEST(tests, test_logger);
+    FTB_ADD_TEST(tests, test_time_sleep);
+    FTB_ADD_TEST(tests, test_scoped_ctx);
+
+    /* Final Polish Edge Cases */
+    /* Macros & Math Tests */
+    FTB_ADD_TEST(tests, test_math_macros);
+    FTB_ADD_TEST(tests, test_bit_macros);
+    FTB_ADD_TEST(tests, test_struct_macros);
+    FTB_ADD_TEST(tests, test_path_rename_and_cwd);
+    FTB_ADD_TEST(tests, test_mem_realloc_to_zero);
+    FTB_ADD_TEST(tests, test_logger_toggles);
+    FTB_ADD_TEST(tests, test_time_resolution);
 
     /* --- Run & Report --- */
     ftb_tests_run(tests);
