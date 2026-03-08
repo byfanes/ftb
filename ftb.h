@@ -228,9 +228,9 @@ typedef struct {
 } ftb_ctx_t;
 
 typedef struct {
-    char* name;
+    const char* name;
     bool res;
-    // TBD: time
+    u64 time_usec;
     bool (*func)(void);
 } ftb_test_t;
 
@@ -330,7 +330,6 @@ bool ftb_path_dirname(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
 bool ftb_path_extension(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
 bool ftb_path_stem(ftb_ctx_t* ctx,ftb_path_t* out,ftb_path_t path);
 
-
 bool ftb_path_join_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* p1, u32 len1, const char* p2, u32 len2);
 bool ftb_path_join(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t p1, ftb_path_t p2);
 bool ftb_path_normalize_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u32 len);
@@ -354,6 +353,11 @@ bool ftb_path_absolute_cstr(ftb_ctx_t* ctx, ftb_path_t* out, const char* path, u
 bool ftb_path_absolute(ftb_ctx_t* ctx, ftb_path_t* out, ftb_path_t path);
 
 bool ftb_path_cwd(ftb_ctx_t* ctx, ftb_path_t* out);
+
+u64 ftb_time_now_ms(void);
+u64 ftb_time_now_us(void);
+f64 ftb_time_now_sec(void);
+void ftb_time_sleep_ms(u32);
 
 #endif /* FTB_H_ */
 
@@ -732,8 +736,13 @@ FTBDEF bool ftb_tests_run
     u32 i = 0;
     for(;i < ftb_da_count(tests);++i)
     {
+        u64 usec = 0;
+        u64 end_usec = 0;
         ftb_error_ret((!tests[i].func),false);
+        usec = ftb_time_now_us();
         tests[i].res = tests[i].func();
+        end_usec = ftb_time_now_us();
+        tests[i].time_usec = end_usec - usec;
     }
     return true;
 }
@@ -764,9 +773,16 @@ FTBDEF bool ftb_tests_report_redirect
     }
     for(;i < ftb_da_count(tests);++i)
     {
-        pass &= tests[i].res;
-        char* c = (tests[i].res) ? s : f;
-        fprintf(fptr,"  [%s] <- %s\n",c,tests[i].name);
+        ftb_test_t* test = &tests[i];
+        pass &= test->res;
+        char* c = (test->res) ? s : f;
+        u64 us = test->time_usec;
+        if (us < 1000)
+        {fprintf(fptr," [%6lu us] [%s] <- %s\n",us,c,test->name);}
+        else if (us < 1000000)
+        {fprintf(fptr," [%6.2f ms] [%s] <- %s\n",us / 1000.0,c,test->name);}
+        else
+        {fprintf(fptr," [%6.2f  s] [%s] <- %s\n",us / 1000000.0,c,test->name);}
     }
     return pass;
 }
@@ -1327,6 +1343,44 @@ bool ftb_path_cwd(ftb_ctx_t* ctx, ftb_path_t* out) {
 #endif
 }
 
+u64 ftb_time_now_ms
+(void)
+{
+#ifdef _WIN32
+    return GetTickCount64();
+#else
+    struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts);
+    return (u64)ts.tv_sec*1000+ts.tv_nsec/1000000;
+#endif
+}
+
+u64 ftb_time_now_us
+(void)
+{
+#ifdef _WIN32
+    LARGE_INTEGER freq, t;
+    QueryPerformanceFrequency(&freq); QueryPerformanceCounter(&t);
+    return (u64)(t.QuadPart*1000000/freq.QuadPart);
+#else
+    struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); return (u64)ts.tv_sec*1000000+ts.tv_nsec/1000;
+#endif
+}
+
+f64 ftb_time_now_sec
+(void)
+{
+    return (f64)ftb_time_now_ms()/1000.0;
+}
+
+void ftb_time_sleep_ms
+(u32 ms)
+{
+#ifdef _WIN32
+    Sleep(ms);
+#else
+    usleep(ms*1000);
+#endif
+}
 
 #endif /* FTB_FIRST_IMPLEMENTATION */
 #endif /* FTB_IMPLEMENTATION */
