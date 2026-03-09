@@ -5,9 +5,11 @@
 
 #define FTB_FS_SEP '\\'
     #include <windows.h>
+    #include <malloc.h>
     #warning "Doesnt fully support windows and havent done any test for it yet!"
-    #define FTB_IS_OS_WINDOW true
-    #define FTB_IS_OS_POISX false
+    #define FTB_IS_OS_WINDOWS true
+    #define FTB_IS_OS_POSIX false
+    #define ftb_alloca _alloca
 #else /* _WIN32 */
     #define FTB_FS_SEP '/'
     #include <sys/stat.h>
@@ -15,8 +17,10 @@
     #include <limits.h>
     #include <errno.h>
     #include <dirent.h>
-    #define FTB_IS_OS_WINDOW false
-    #define FTB_IS_OS_POISX true
+    #include <alloca.h>
+    #define FTB_IS_OS_WINDOWS false
+    #define FTB_IS_OS_POSIX true
+    #define ftb_alloca alloca
 #endif /* _WIN32 */
 
 #if defined(_WIN32)
@@ -85,33 +89,31 @@ typedef uintptr_t   usize;
 
 #define ftb_error_ret(cond,val) \
    do { if(cond) {return val;} } while(0)
-
 #endif /* FTB_WERROR */
 
 #ifdef FTB_VERBOSE
-
-#define _FTB_VERBOSE(msg)    \
-    do {                     \
-        fprintf(stdout,"[INFO]" msg); \
-    } while(0);
-#else /* FTB_VERBOSE */
-#define _FTB_VERBOSE(msg)
-#endif /* FTB_VERBOSE */
+#define _FTB_VERBOSE(fmt, ...)                       \
+    do {                                             \
+        fprintf(stdout, "[VERB] " fmt "\n", ##__VA_ARGS__); \
+    } while(0)
+#else
+#define _FTB_VERBOSE(...)
+#endif
 
 #ifndef FTB_DA_INIT_CAPACITY
 #define FTB_DA_INIT_CAPACITY 16
 #endif /* FTB_DA_INIT_CAPACITY */
 
-#define ftb_da_header(da) ((ftb_ptr_header_t*)(da) - 1)
-#define ftb_da_addr(da) ((ftb_da_header(da))->addr)
+#define ftb_da_header(da) ((da) ? (ftb_ptr_header_t*)(da) - 1 : 0)
+#define ftb_da_addr(da) ((da) ? (ftb_da_header(da))->addr : 0)
 #define ftb_da_count(da) ((ftb_da_header(da))->count)
+#define ftb_da_capacity(da) ((ftb_da_header(da))->capacity)
+#define ftb_da_set_count(da,x) do{ (ftb_da_header(da))->count = (x);} while(0)
+#define ftb_da_set_capacity(da,x) do{ (ftb_da_header(da))->capacity = (x);} while(0)
 #define ftb_da_count_inc(da) ((ftb_da_header(da))->count++)
 #define ftb_da_count_sum(da,x) ((ftb_da_header(da))->count+=(x))
 #define ftb_da_count_sub(da,x) ((ftb_da_header(da))->count-=(x))
 #define ftb_da_count_dec(da) ((ftb_da_header(da))->count--)
-#define ftb_da_capacity(da) (ftb_da_header(da))->capacity
-#define ftb_da_set_count(da,x) do{ (ftb_da_header(da))->count = (x);} while(0)
-#define ftb_da_set_capacity(da,x) do{ (ftb_da_header(da))->capacity = (x);} while(0)
 #define ftb_raw_da_free(da) free(ftb_da_header(da))
 #define ftb_da_clamp_id(da,x) FTB_CLAMP((x), 0, (ftb_da_count(arr)-1))
 #define ftb_da_foreach(type_ptr, it, da) \
@@ -566,12 +568,14 @@ FTBDEF void ftb_mem_cleanup
 (ftb_ctx_t* ctx)
 {
     assert(ctx);
+    if(!ctx->ptrs.items || !ctx->ptrs.marks) return;
     isize i = ftb_da_count(ctx->ptrs.items) - 1;
     assert(i >= 0);
     assert(ftb_da_count(ctx->ptrs.marks) > 0);
     isize stop = ctx->ptrs.marks[ftb_da_count(ctx->ptrs.marks)-1];
     for(;i >= stop;--i)
     {
+        if(!ctx->ptrs.items[i]) {continue;}
         void* ptr = ftb_da_header(ctx->ptrs.items[i]);
         free(ptr);
         ctx->ptrs.items[i] = 0;
@@ -894,8 +898,14 @@ FTBDEF bool __ftb_log
     if(!ctx->loger.log_file) return true;
     u32 tag_len = strlen(tag);
     u32 fmt_len = strlen(fmt);
-    u32 len = fmt_len+tag_len;
-    char buf[len+64];
+    u32 len = fmt_len + tag_len + 64;
+    char* buf = 0;
+    if(len >= FTB_KB(10)) {
+        buf = (char*)malloc(len);
+        assert(buf);
+    } else {
+        buf = (char*)ftb_alloca(len);
+    }
     u32 index = 0;
     if(ctx->loger.timestaps) {
         time_t t = time(NULL);
@@ -913,6 +923,7 @@ FTBDEF bool __ftb_log
     buf[index++] = '\n';
     buf[index++] = '\0';
     i32 err = vfprintf(ctx->loger.log_file,buf,ap);
+    if(len >= FTB_KB(10)) { free(buf); }
     return (err < 0) ? false : true;
 }
 
