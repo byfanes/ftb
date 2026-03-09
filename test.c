@@ -1245,6 +1245,99 @@ bool test_time_resolution(void) {
 
 /*
  * ==========================================
+ * "ABSOLUTELY CLUELESS PERSON" TESTS (BAD USAGE)
+ * ==========================================
+ * These test how the library defends itself against terrible
+ * inputs (NULLs, 0-lengths, out-of-bounds, self-references).
+ */
+
+static bool _clueless_append_null(ftb_ctx_t* ctx, ftb_str_t s) {
+    ftb_str_append_cstr(ctx, s, NULL);
+    return true;
+}
+
+static bool _clueless_append_self(ftb_ctx_t* ctx, ftb_str_t s) {
+    ftb_str_append_str(ctx, s, s);
+    return true;
+}
+
+bool test_clueless_string_abuse(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_str_t s = ftb_str_create(&ctx);
+
+    TEST_ASSERT(_clueless_append_null(&ctx, s) == false, "Library stopped appending NULL cstr");
+
+    TEST_ASSERT(_clueless_append_self(&ctx, s) == false, "Library stopped appending str to itself");
+
+    TEST_ASSERT(ftb_str_uppercase(NULL) == false, "Safely rejected NULL uppercase");
+    TEST_ASSERT(ftb_str_find_cstr(NULL, "needle") == -1, "Safely rejected NULL search");
+    TEST_ASSERT(ftb_str_find_cstr(s, NULL) == -1, "Safely rejected NULL needle");
+
+    ftb_str_append_cstr(&ctx, s, "Normal String");
+    TEST_ASSERT(ftb_str_remove_range(s, 99999, 500) == true, "Ignored out-of-bounds remove");
+    TEST_ASSERT(strcmp(s, "Normal String") == 0, "String was completely unharmed");
+
+    ftb_mem_delete_ctx(&ctx);
+    TEST_RESULT(true);
+}
+
+bool test_clueless_memory_abuse(void) {
+    ftb_ctx_t ctx = {0};
+
+    void* p1 = ftb_mem_alloc(&ctx, 0);
+    void* p2 = ftb_mem_zalloc(&ctx, 0);
+    TEST_ASSERT(p1 == NULL, "Allocating 0 bytes returns NULL");
+    TEST_ASSERT(p2 == NULL, "Zallocating 0 bytes returns NULL");
+
+    ftb_mem_free(&ctx, NULL);
+
+    void* p3 = ftb_mem_realloc(&ctx, NULL, 0);
+    TEST_ASSERT(p3 == NULL, "Reallocating NULL with 0 bytes returns NULL safely");
+
+    ftb_mem_delete_ctx(&ctx);
+    TEST_RESULT(true);
+}
+
+bool test_clueless_file_abuse(void) {
+    ftb_ctx_t ctx = {0};
+
+    TEST_ASSERT(ftb_file_exists(NULL) == false, "NULL file existence handled");
+    TEST_ASSERT(ftb_file_size(NULL) == false, "NULL file size returns -1/false");
+    TEST_ASSERT(ftb_file_remove(NULL) == false, "NULL file remove rejected");
+
+    const char* phantom_file = "i_do_not_exist_12345.xyz";
+    TEST_ASSERT(ftb_file_size(phantom_file) == -1, "Phantom file size is -1");
+
+    ftb_bytes_t data = ftb_file_read(&ctx, phantom_file);
+    TEST_ASSERT(data == NULL, "Reading phantom file safely returns NULL");
+
+    TEST_ASSERT(ftb_file_copy(NULL, NULL) == false, "Copying NULL to NULL rejected");
+    TEST_ASSERT(ftb_file_copy(phantom_file, "destination.txt") == false, "Copying phantom file failed gracefully");
+
+    TEST_ASSERT(ftb_dir_exists(NULL) == false, "NULL dir check rejected");
+    TEST_ASSERT(ftb_dir_mkdir(NULL) == false, "NULL dir creation rejected");
+
+    ftb_mem_delete_ctx(&ctx);
+    TEST_RESULT(true);
+}
+
+bool test_clueless_path_abuse(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_path_t out = ftb_str_create(&ctx);
+
+    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, "some/path", 0) == false, "Path with 0 length rejected");
+    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, "some/path", 0) == false, "Dirname with 0 length rejected");
+
+    TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, NULL, NULL) == false, "Joining double NULL paths rejected");
+
+    TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, NULL, 10) == false, "Getting extension of NULL rejected");
+
+    ftb_mem_delete_ctx(&ctx);
+    TEST_RESULT(true);
+}
+
+/*
+ * ==========================================
  * MAIN ENTRY POINT
  * ==========================================
  */
@@ -1330,6 +1423,12 @@ int main(void)
     FTB_ADD_TEST(tests, test_mem_realloc_to_zero);
     FTB_ADD_TEST(tests, test_logger_toggles);
     FTB_ADD_TEST(tests, test_time_resolution);
+
+    /* --- Bad Usage / Clueless Developer Tests --- */
+    FTB_ADD_TEST(tests, test_clueless_string_abuse);
+    FTB_ADD_TEST(tests, test_clueless_memory_abuse);
+    FTB_ADD_TEST(tests, test_clueless_file_abuse);
+    FTB_ADD_TEST(tests, test_clueless_path_abuse);
 
     /* --- Run & Report --- */
     ftb_tests_run(tests);

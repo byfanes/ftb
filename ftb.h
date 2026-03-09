@@ -113,7 +113,7 @@ typedef uintptr_t   usize;
 #define ftb_da_set_count(da,x) do{ (ftb_da_header(da))->count = (x);} while(0)
 #define ftb_da_set_capacity(da,x) do{ (ftb_da_header(da))->capacity = (x);} while(0)
 #define ftb_raw_da_free(da) free(ftb_da_header(da))
-#define ftb_da_clamp_id(da,x) CLAMP((x), 0, (ftb_da_count(arr)-1))
+#define ftb_da_clamp_id(da,x) FTB_CLAMP((x), 0, (ftb_da_count(arr)-1))
 #define ftb_da_foreach(type_ptr, it, da) \
     for (type_ptr it = (da); (da) != NULL && it < (da) + ftb_da_count(da); ++it)
 #define ftb_da_empty(da) ((da) == NULL || ftb_da_count(da) == 0)
@@ -224,9 +224,9 @@ do {                                            \
 #define FTB_ZERO(x) memset(&(x),0,sizeof(x))
 #define FTB_UNUSED(x) (void)(x)
 #define FTB_CONCAT2(a,b) a##b
-#define FTB_CONCAT(a,b) CONCAT2(a,b)
+#define FTB_CONCAT(a,b) FTB_CONCAT2(a,b)
 #define FTB_STRINGIFY(x) #x
-#define FTB_TOSTRING(x) STRINGIFY(x)
+#define FTB_TOSTRING(x) FTB_STRINGIFY(x)
 #define FTB_KB(x) ((x)*1024ULL)
 #define FTB_MB(x) ((x)*1024ULL*1024ULL)
 #define FTB_GB(x) ((x)*1024ULL*1024ULL*1024ULL)
