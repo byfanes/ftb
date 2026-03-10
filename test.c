@@ -1,6 +1,6 @@
 #define FTB_IMPLEMENTATION
 #define FTB_TEST_CRASH
-//#define FTBDEF static inline
+#define FTBDEF static inline
 #include "ftb.h"
 
 #include <stdio.h>
@@ -161,24 +161,24 @@ bool test_str_basic_ops(void) {
 
     ftb_str_t s = ftb_str_create(&ctx);
     TEST_ASSERT(s != NULL, "String creation failed");
-    TEST_ASSERT(ftb_str_len(s) == 0, "String not empty");
+    TEST_ASSERT(ftb_strlen(s) == 0, "String not empty");
 
     ftb_str_append_cstr(&ctx, s, "Hello");
     TEST_ASSERT(strcmp(s, "Hello") == 0, "Append cstr content");
-    TEST_ASSERT(ftb_str_len(s) == 5, "Append cstr count");
+    TEST_ASSERT(ftb_strlen(s) == 5, "Append cstr count");
 
     ftb_str_t s2 = ftb_str_create(&ctx);
     ftb_str_append_cstr(&ctx, s2, " World");
     ftb_str_append_str(&ctx, s, s2);
 
     TEST_ASSERT(strcmp(s, "Hello World") == 0, "Append str content");
-    TEST_ASSERT(ftb_str_len(s) == 11, "Append str count");
+    TEST_ASSERT(ftb_strlen(s) == 11, "Append str count");
 
     char* raw = ftb_str_to_cstr(&ctx, s);
     TEST_ASSERT(strcmp(raw, "Hello World") == 0, "To cstr check");
 
     ftb_str_clear(s);
-    TEST_ASSERT(ftb_str_len(s) == 0, "Clear count");
+    TEST_ASSERT(ftb_strlen(s) == 0, "Clear count");
     TEST_ASSERT(s[0] == 0, "Clear data");
 
     ftb_mem_delete_ctx(&ctx);
@@ -213,10 +213,10 @@ bool test_str_compare(void) {
     TEST_ASSERT(ftb_str_cmp_cstr(s1, "Apple"), "Cmp cstr true");
     TEST_ASSERT(!ftb_str_cmp_cstr(s1, "Orange"), "Cmp cstr false");
 
-    TEST_ASSERT(ftb_str_cmp_str(s1, s2), "Cmp str true");
+    TEST_ASSERT(ftb_str_cmp(s1, s2), "Cmp str true");
 
     ftb_str_append_cstr(&ctx, s2, "s");
-    TEST_ASSERT(!ftb_str_cmp_str(s1, s2), "Cmp str false");
+    TEST_ASSERT(!ftb_str_cmp(s1, s2), "Cmp str false");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -246,7 +246,7 @@ bool test_str_trim(void) {
     ftb_str_append_cstr(&ctx, s, "   abc");
     ftb_str_trim_left(s);
     TEST_ASSERT(strcmp(s, "abc") == 0, "Trim left content");
-    TEST_ASSERT(ftb_str_len(s) == 3, "Trim left count");
+    TEST_ASSERT(ftb_strlen(s) == 3, "Trim left count");
 
     ftb_str_clear(s);
 
@@ -254,7 +254,7 @@ bool test_str_trim(void) {
     ftb_str_trim_right(s);
 
     TEST_ASSERT(strcmp(s, "abc") == 0, "Trim right content");
-    TEST_ASSERT(ftb_str_len(s) == 3, "Trim right count");
+    TEST_ASSERT(ftb_strlen(s) == 3, "Trim right count");
 
     ftb_str_clear(s);
 
@@ -310,7 +310,7 @@ bool test_str_remove_range(void) {
     ftb_str_remove_range(s, 3, 3);
 
     TEST_ASSERT(strcmp(s, "0126789") == 0, "Remove range content");
-    TEST_ASSERT(ftb_str_len(s) == 7, "Remove range count");
+    TEST_ASSERT(ftb_strlen(s) == 7, "Remove range count");
 
     ftb_str_remove_range(s, 5, 100);
     TEST_ASSERT(strcmp(s, "01267") == 0, "Remove range overshoot");
@@ -335,7 +335,7 @@ bool test_string_utils(void) {
     ftb_str_append_cstr(&ctx, s, "   data   ");
     ftb_str_trim(s);
     TEST_ASSERT(ftb_str_cmp_cstr(s, "data"), "Trim spaces");
-    TEST_ASSERT(ftb_str_len(s) == 4, "Trim count update");
+    TEST_ASSERT(ftb_strlen(s) == 4, "Trim count update");
 
     ftb_str_clear(s);
     ftb_str_append_cstr(&ctx, s, "filename.txt");
@@ -392,8 +392,8 @@ bool test_str_cmp_length_diff(void) {
     ftb_str_append_cstr(&ctx, s1, "short");
     ftb_str_append_cstr(&ctx, s2, "shorter");
 
-    TEST_ASSERT(!ftb_str_cmp_str(s1, s2), "Different lengths not equal");
-    TEST_ASSERT(!ftb_str_cmp_str(s2, s1), "Different lengths not equal reversed");
+    TEST_ASSERT(!ftb_str_cmp(s1, s2), "Different lengths not equal");
+    TEST_ASSERT(!ftb_str_cmp(s2, s1), "Different lengths not equal reversed");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -407,8 +407,8 @@ bool test_str_cmp_prefix(void) {
     ftb_str_append_cstr(&ctx, s1, "prefix");
     ftb_str_append_cstr(&ctx, s2, "prefix_extra");
 
-    TEST_ASSERT(ftb_str_cmp_str(s1, s2) == false, "Prefix is not equal to full");
-    TEST_ASSERT(ftb_str_cmp_str(s2, s1) == false, "Full is not equal to prefix");
+    TEST_ASSERT(ftb_str_cmp(s1, s2) == false, "Prefix is not equal to full");
+    TEST_ASSERT(ftb_str_cmp(s2, s1) == false, "Full is not equal to prefix");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -464,11 +464,11 @@ bool test_str_starts_ends_str(void) {
     ftb_str_t bad_s = ftb_str_create(&ctx);
     ftb_str_append_cstr(&ctx, bad_s, "bat");
 
-    TEST_ASSERT(ftb_str_starts_with_str(s1, start_s), "Starts with str");
-    TEST_ASSERT(ftb_str_ends_with_str(s1, end_s), "Ends with str");
+    TEST_ASSERT(ftb_str_starts_with(s1, start_s), "Starts with str");
+    TEST_ASSERT(ftb_str_ends_with(s1, end_s), "Ends with str");
 
-    TEST_ASSERT(!ftb_str_starts_with_str(s1, bad_s), "Does not start with str");
-    TEST_ASSERT(!ftb_str_ends_with_str(s1, bad_s), "Does not end with str");
+    TEST_ASSERT(!ftb_str_starts_with(s1, bad_s), "Does not start with str");
+    TEST_ASSERT(!ftb_str_ends_with(s1, bad_s), "Does not end with str");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -486,11 +486,11 @@ bool test_str_find_str_advanced(void) {
     ftb_str_t needle2 = ftb_str_create(&ctx);
     ftb_str_append_cstr(&ctx, needle2, "lazy");
 
-    TEST_ASSERT(ftb_str_find_str(haystack, needle1) == 4, "Find string inside");
-    TEST_ASSERT(ftb_str_contains_str(haystack, needle1), "Contains string true");
+    TEST_ASSERT(ftb_str_find(haystack, needle1) == 4, "Find string inside");
+    TEST_ASSERT(ftb_str_contains(haystack, needle1), "Contains string true");
 
-    TEST_ASSERT(ftb_str_find_str(haystack, needle2) == -1, "Find string missing");
-    TEST_ASSERT(!ftb_str_contains_str(haystack, needle2), "Contains string false");
+    TEST_ASSERT(ftb_str_find(haystack, needle2) == -1, "Find string missing");
+    TEST_ASSERT(!ftb_str_contains(haystack, needle2), "Contains string false");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -501,12 +501,12 @@ bool test_str_trim_advanced(void) {
 
     ftb_str_t s_empty = ftb_str_create(&ctx);
     ftb_str_trim(s_empty);
-    TEST_ASSERT(ftb_str_len(s_empty) == 0, "Trim empty string");
+    TEST_ASSERT(ftb_strlen(s_empty) == 0, "Trim empty string");
 
     ftb_str_t s_spaces = ftb_str_create(&ctx);
     ftb_str_append_cstr(&ctx, s_spaces, "     ");
     ftb_str_trim(s_spaces);
-    TEST_ASSERT(ftb_str_len(s_spaces) == 0, "Trim all spaces string");
+    TEST_ASSERT(ftb_strlen(s_spaces) == 0, "Trim all spaces string");
 
     ftb_str_t s_left = ftb_str_create(&ctx);
     ftb_str_append_cstr(&ctx, s_left, " \t\n word");
@@ -531,10 +531,10 @@ bool test_str_remove_range_edge_cases(void) {
 
     ftb_str_remove_range(s, 3, 3);
     TEST_ASSERT(strcmp(s, "abc") == 0, "Remove exact tail");
-    TEST_ASSERT(ftb_str_len(s) == 3, "Tail removed length");
+    TEST_ASSERT(ftb_strlen(s) == 3, "Tail removed length");
 
     ftb_str_remove_range(s, 0, 100);
-    TEST_ASSERT(ftb_str_len(s) == 0, "Remove all");
+    TEST_ASSERT(ftb_strlen(s) == 0, "Remove all");
     TEST_ASSERT(strcmp(s, "") == 0, "Empty after remove all");
 
     ftb_mem_delete_ctx(&ctx);
@@ -577,7 +577,7 @@ bool test_str_append_loop(void) {
     for(int i = 0; i < 100; i++) {
         ftb_str_append_cstr(&ctx, s, "A");
     }
-    TEST_ASSERT(ftb_str_len(s) == 100, "String length 100");
+    TEST_ASSERT(ftb_strlen(s) == 100, "String length 100");
     TEST_ASSERT(ftb_da_capacity(s) >= 100, "Capacity grew");
 
     ftb_mem_delete_ctx(&ctx);
@@ -676,15 +676,15 @@ bool test_path_basename(void) {
     ftb_path_t out = ftb_str_create(&ctx);
 
     const char* p1 = "dir" PSEP "file.txt";
-    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p1, strlen(p1)), "basename normal");
+    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p1), "basename normal");
     TEST_ASSERT(strcmp(out, "file.txt") == 0, "basename normal match");
 
     const char* p2 = "file.txt";
-    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p2, strlen(p2)), "basename no dir");
+    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p2), "basename no dir");
     TEST_ASSERT(strcmp(out, "file.txt") == 0, "basename no dir match");
 #ifdef _WIN32
     const char* p3 = "dir/file.txt";
-    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p3, strlen(p3)), "basename windows fwd slash");
+    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p3), "basename windows fwd slash");
     TEST_ASSERT(strcmp(out, "file.txt") == 0, "basename windows fwd slash match");
 #endif
     ftb_mem_delete_ctx(&ctx);
@@ -696,7 +696,7 @@ bool test_path_dirname(void) {
     ftb_path_t out = ftb_str_create(&ctx);
 
     const char* p1 = "dir" PSEP "file.txt";
-    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p1, strlen(p1)), "dirname normal");
+    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p1), "dirname normal");
     TEST_ASSERT(strcmp(out, "dir") == 0, "dirname normal match");
 
     ftb_mem_delete_ctx(&ctx);
@@ -708,15 +708,15 @@ bool test_path_extension(void) {
     ftb_path_t out = ftb_str_create(&ctx);
 
     const char* p1 = "dir" PSEP "file.txt";
-    TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p1, strlen(p1)), "extension normal");
+    TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p1), "extension normal");
     TEST_ASSERT(strcmp(out, "txt") == 0, "extension normal match");
 
     const char* p2 = "archive.tar.gz";
-    TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p2, strlen(p2)), "extension double");
+    TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p2), "extension double");
     TEST_ASSERT(strcmp(out, "gz") == 0, "extension double match");
 
     const char* p3 = "dir" PSEP "file";
-    TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p3, strlen(p3)) == false, "no extension");
+    TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p3) == false, "no extension");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -729,13 +729,13 @@ bool test_path_stem(void) {
     const char* p1 = "dir" PSEP "file.txt";
     const char* p3 = "dir" PSEP "file";
 
-    TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p1, strlen(p1)), "stem normal");
+    TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p1), "stem normal");
     TEST_ASSERT(strcmp(out, "file") == 0, "stem normal match");
 
-    TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p2, strlen(p2)), "stem double ext");
+    TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p2), "stem double ext");
     TEST_ASSERT(strcmp(out, "archive.tar") == 0, "stem double ext match");
 
-    TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p3, strlen(p3)), "stem no ext");
+    TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p3), "stem no ext");
     TEST_ASSERT(strcmp(out, "file") == 0, "stem no ext match");
 
     ftb_mem_delete_ctx(&ctx);
@@ -766,19 +766,19 @@ bool test_path_dirname_cstr(void) {
     const char* p4 = "dir" PSEP "subdir" PSEP "file";
     const char* p5 = "dir" PSEP;
 
-    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p1, strlen(p1)), "dirname normal");
+    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p1), "dirname normal");
     TEST_ASSERT(strcmp(out, "dir") == 0, "dirname normal match");
 
-    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p2, strlen(p2)), "dirname root");
+    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p2), "dirname root");
     TEST_ASSERT(strcmp(out, PSEP) == 0, "dirname root match");
 
-    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p3, strlen(p3)), "dirname empty");
-    TEST_ASSERT(ftb_str_len(out) == 0, "dirname empty match");
+    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p3), "dirname empty");
+    TEST_ASSERT(ftb_strlen(out) == 0, "dirname empty match");
 
-    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p4, strlen(p4)), "dirname nested");
+    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p4), "dirname nested");
     TEST_ASSERT(strcmp(out, "dir" PSEP "subdir") == 0, "dirname nested match");
 
-    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p5, strlen(p5)), "dirname trailing slash");
+    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p5), "dirname trailing slash");
     TEST_ASSERT(strcmp(out, "dir") == 0, "dirname trailing slash match");
 
     ftb_mem_delete_ctx(&ctx);
@@ -794,19 +794,19 @@ bool test_path_wrappers(void) {
     ftb_path_t out_wrapper = ftb_str_create(&ctx);
     ftb_path_t out_cstr = ftb_str_create(&ctx);
 
-    ftb_path_basename_cstr(&ctx, &out_cstr, my_path, ftb_str_len(my_path));
+    ftb_path_basename(&ctx, &out_cstr, my_path);
     TEST_ASSERT(ftb_path_basename(&ctx, &out_wrapper, my_path), "wrapper basename call");
     TEST_ASSERT(strcmp(out_wrapper, out_cstr) == 0, "wrapper basename matches cstr result");
 
-    ftb_path_dirname_cstr(&ctx, &out_cstr, my_path, ftb_str_len(my_path));
+    ftb_path_dirname(&ctx, &out_cstr, my_path);
     TEST_ASSERT(ftb_path_dirname(&ctx, &out_wrapper, my_path), "wrapper dirname call");
     TEST_ASSERT(strcmp(out_wrapper, out_cstr) == 0, "wrapper dirname matches cstr result");
 
-    ftb_path_extension_cstr(&ctx, &out_cstr, my_path, ftb_str_len(my_path));
+    ftb_path_extension(&ctx, &out_cstr, my_path);
     TEST_ASSERT(ftb_path_extension(&ctx, &out_wrapper, my_path), "wrapper ext call");
     TEST_ASSERT(strcmp(out_wrapper, out_cstr) == 0, "wrapper ext matches cstr result");
 
-    ftb_path_stem_cstr(&ctx, &out_cstr, my_path, ftb_str_len(my_path));
+    ftb_path_stem(&ctx, &out_cstr, my_path);
     TEST_ASSERT(ftb_path_stem(&ctx, &out_wrapper, my_path), "wrapper stem call");
     TEST_ASSERT(strcmp(out_wrapper, out_cstr) == 0, "wrapper stem matches cstr result");
 
@@ -837,11 +837,11 @@ bool test_path_normalize_cstr(void) {
     ftb_path_t out = ftb_str_create(&ctx);
 
     const char* p1 = "a" PSEP "b" PSEP ".." PSEP "c";
-    TEST_ASSERT(ftb_path_normalize_cstr(&ctx, &out, p1, strlen(p1)), "normalize relative dot-dot");
+    TEST_ASSERT(ftb_path_normalize_cstr(&ctx, &out, p1), "normalize relative dot-dot");
     TEST_ASSERT(strcmp(out, "a" PSEP "c") == 0, "normalize relative match");
 
     const char* p2 = PSEP "a" PSEP "." PSEP "b" PSEP PSEP PSEP "c" PSEP ".." PSEP "d" PSEP;
-    TEST_ASSERT(ftb_path_normalize_cstr(&ctx, &out, p2, strlen(p2)), "normalize absolute complex");
+    TEST_ASSERT(ftb_path_normalize_cstr(&ctx, &out, p2), "normalize absolute complex");
     TEST_ASSERT(strcmp(out, PSEP "a" PSEP "b" PSEP "d") == 0, "normalize absolute match");
 
     ftb_mem_delete_ctx(&ctx);
@@ -854,12 +854,12 @@ bool test_path_with_extension_cstr(void) {
 
     const char* p1 = "file.txt";
     const char* ext = ".md";
-    TEST_ASSERT(ftb_path_with_extension_cstr(&ctx, &out, p1, strlen(p1), ext, strlen(ext)), "replace ext");
+    TEST_ASSERT(ftb_path_with_extension_cstr(&ctx, &out, p1, ext), "replace ext");
     TEST_ASSERT(strcmp(out, "file.md") == 0, "replace ext match");
 
     const char* p2 = "archive";
     const char* ext2 = "tar.gz";
-    TEST_ASSERT(ftb_path_with_extension_cstr(&ctx, &out, p2, strlen(p2), ext2, strlen(ext2)), "add ext");
+    TEST_ASSERT(ftb_path_with_extension_cstr(&ctx, &out, p2, ext2), "add ext");
     TEST_ASSERT(strcmp(out, "archive.tar.gz") == 0, "add ext match");
 
     ftb_mem_delete_ctx(&ctx);
@@ -870,14 +870,14 @@ bool test_path_info_cstr(void) {
     const char* abs_p = PSEP "usr" PSEP "bin" PSEP "gcc";
     const char* rel_p = "src" PSEP "main.c";
 
-    TEST_ASSERT(ftb_path_is_absolute_cstr(abs_p, strlen(abs_p)), "is absolute true");
-    TEST_ASSERT(!ftb_path_is_absolute_cstr(rel_p, strlen(rel_p)), "is absolute false");
+    TEST_ASSERT(ftb_path_is_absolute_cstr(abs_p), "is absolute true");
+    TEST_ASSERT(!ftb_path_is_absolute_cstr(rel_p), "is absolute false");
 
-    TEST_ASSERT(!ftb_path_is_relative_cstr(abs_p, strlen(abs_p)), "is relative false");
-    TEST_ASSERT(ftb_path_is_relative_cstr(rel_p, strlen(rel_p)), "is relative true");
+    TEST_ASSERT(!ftb_path_is_relative_cstr(abs_p), "is relative false");
+    TEST_ASSERT(ftb_path_is_relative_cstr(rel_p), "is relative true");
 
-    TEST_ASSERT(ftb_path_has_extension_cstr(rel_p, strlen(rel_p)), "has extension true");
-    TEST_ASSERT(!ftb_path_has_extension_cstr(abs_p, strlen(abs_p)), "has extension false");
+    TEST_ASSERT(ftb_path_has_extension_cstr(rel_p), "has extension true");
+    TEST_ASSERT(!ftb_path_has_extension_cstr(abs_p), "has extension false");
 
     TEST_RESULT(true);
 }
@@ -887,15 +887,15 @@ bool test_path_fs_operations(void) {
     ftb_path_t out = ftb_str_create(&ctx);
 
     TEST_ASSERT(ftb_path_cwd_get(&ctx, &out), "get cwd");
-    TEST_ASSERT(ftb_str_len(out) > 0, "cwd string populated");
+    TEST_ASSERT(ftb_strlen(out) > 0, "cwd string populated");
 
     const char* current_dir = ".";
-    TEST_ASSERT(ftb_path_exists_cstr(&ctx, current_dir, 1), "cwd exists");
-    TEST_ASSERT(ftb_path_is_dir_cstr(&ctx, current_dir, 1), "cwd is dir");
-    TEST_ASSERT(!ftb_path_is_file_cstr(&ctx, current_dir, 1), "cwd is not a regular file");
+    TEST_ASSERT(ftb_path_exists_cstr(&ctx, current_dir), "cwd exists");
+    TEST_ASSERT(ftb_path_is_dir_cstr(&ctx, current_dir), "cwd is dir");
+    TEST_ASSERT(!ftb_path_is_file_cstr(&ctx, current_dir), "cwd is not a regular file");
 
-    TEST_ASSERT(ftb_path_absolute_cstr(&ctx, &out, current_dir, 1), "resolve abs path");
-    TEST_ASSERT(ftb_path_is_absolute_cstr(out, ftb_str_len(out)), "resolved path is absolute");
+    TEST_ASSERT(ftb_path_absolute_cstr(&ctx, &out, current_dir), "resolve abs path");
+    TEST_ASSERT(ftb_path_is_absolute(out), "resolved path is absolute");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -1339,12 +1339,12 @@ bool test_clueless_path_abuse(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t out = ftb_str_create(&ctx);
 
-    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, "some" PSEP "path", 0) == false, "Path with 0 length rejected");
-    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, "some" PSEP "path", 0) == false, "Dirname with 0 length rejected");
+    TEST_ASSERT(ftb_path_basename_cstr_n(&ctx, &out, "some" PSEP "path", 0) == false, "Path with 0 length rejected");
+    TEST_ASSERT(ftb_path_dirname_cstr_n(&ctx, &out, "some" PSEP "path", 0) == false, "Dirname with 0 length rejected");
 
     TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, NULL, NULL) == false, "Joining double NULL paths rejected");
 
-    TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, NULL, 10) == false, "Getting extension of NULL rejected");
+    TEST_ASSERT(ftb_path_extension_cstr_n(&ctx, &out, NULL, 10) == false, "Getting extension of NULL rejected");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
