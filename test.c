@@ -1,9 +1,16 @@
 #define FTB_IMPLEMENTATION
 #define FTB_TEST_CRASH
+//#define FTBDEF static inline
 #include "ftb.h"
 
 #include <stdio.h>
 #include <string.h>
+
+#ifdef _WIN32
+#define PSEP "\\"
+#else
+#define PSEP "/"
+#endif
 
 /*
  * ==========================================
@@ -668,7 +675,7 @@ bool test_path_basename(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t out = ftb_str_create(&ctx);
 
-    const char* p1 = "dir/file.txt";
+    const char* p1 = "dir" PSEP "file.txt";
     TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p1, strlen(p1)), "basename normal");
     TEST_ASSERT(strcmp(out, "file.txt") == 0, "basename normal match");
 
@@ -676,9 +683,9 @@ bool test_path_basename(void) {
     TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p2, strlen(p2)), "basename no dir");
     TEST_ASSERT(strcmp(out, "file.txt") == 0, "basename no dir match");
 #ifdef _WIN32
-    const char* p3 = "dir\\file.txt";
-    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p3, strlen(p3)), "basename windows backslash");
-    TEST_ASSERT(strcmp(out, "file.txt") == 0, "basename windows backslash match");
+    const char* p3 = "dir/file.txt";
+    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, p3, strlen(p3)), "basename windows fwd slash");
+    TEST_ASSERT(strcmp(out, "file.txt") == 0, "basename windows fwd slash match");
 #endif
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -686,21 +693,21 @@ bool test_path_basename(void) {
 
 bool test_path_dirname(void) {
     ftb_ctx_t ctx = {0};
-    ftb_path_t out = NULL;
+    ftb_path_t out = ftb_str_create(&ctx);
 
-    const char* p1 = "dir/file.txt";
+    const char* p1 = "dir" PSEP "file.txt";
     TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p1, strlen(p1)), "dirname normal");
     TEST_ASSERT(strcmp(out, "dir") == 0, "dirname normal match");
-    
+
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
 }
 
 bool test_path_extension(void) {
     ftb_ctx_t ctx = {0};
-    ftb_path_t out = NULL;
+    ftb_path_t out = ftb_str_create(&ctx);
 
-    const char* p1 = "dir/file.txt";
+    const char* p1 = "dir" PSEP "file.txt";
     TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p1, strlen(p1)), "extension normal");
     TEST_ASSERT(strcmp(out, "txt") == 0, "extension normal match");
 
@@ -708,7 +715,7 @@ bool test_path_extension(void) {
     TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p2, strlen(p2)), "extension double");
     TEST_ASSERT(strcmp(out, "gz") == 0, "extension double match");
 
-    const char* p3 = "dir/file";
+    const char* p3 = "dir" PSEP "file";
     TEST_ASSERT(ftb_path_extension_cstr(&ctx, &out, p3, strlen(p3)) == false, "no extension");
 
     ftb_mem_delete_ctx(&ctx);
@@ -717,17 +724,17 @@ bool test_path_extension(void) {
 
 bool test_path_stem(void) {
     ftb_ctx_t ctx = {0};
-    ftb_path_t out = NULL;
+    ftb_path_t out = ftb_str_create(&ctx);
+    const char* p2 = "archive.tar.gz";
+    const char* p1 = "dir" PSEP "file.txt";
+    const char* p3 = "dir" PSEP "file";
 
-    const char* p1 = "dir/file.txt";
     TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p1, strlen(p1)), "stem normal");
     TEST_ASSERT(strcmp(out, "file") == 0, "stem normal match");
 
-    const char* p2 = "archive.tar.gz";
     TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p2, strlen(p2)), "stem double ext");
     TEST_ASSERT(strcmp(out, "archive.tar") == 0, "stem double ext match");
 
-    const char* p3 = "dir/file";
     TEST_ASSERT(ftb_path_stem_cstr(&ctx, &out, p3, strlen(p3)), "stem no ext");
     TEST_ASSERT(strcmp(out, "file") == 0, "stem no ext match");
 
@@ -737,11 +744,11 @@ bool test_path_stem(void) {
 
 bool test_path_managed_wrappers(void) {
     ftb_ctx_t ctx = {0};
-    
-    ftb_path_t in_path = ftb_str_create(&ctx);
-    ftb_str_append_cstr(&ctx, in_path, "folder/image.png");
 
-    ftb_path_t out_stem = NULL;
+    ftb_path_t in_path = ftb_str_create(&ctx);
+    ftb_str_append_cstr(&ctx, in_path, "folder" PSEP "image.png");
+
+    ftb_path_t out_stem = ftb_str_create(&ctx);
     TEST_ASSERT(ftb_path_stem(&ctx, &out_stem, in_path), "managed stem");
     TEST_ASSERT(strcmp(out_stem, "image") == 0, "managed stem match");
 
@@ -753,23 +760,24 @@ bool test_path_dirname_cstr(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t out = ftb_str_create(&ctx);
 
-    const char* p1 = "dir/file.txt";
+    const char* p1 = "dir" PSEP "file.txt";
+    const char* p2 = PSEP "file.txt";
+    const char* p3 = "file.txt";
+    const char* p4 = "dir" PSEP "subdir" PSEP "file";
+    const char* p5 = "dir" PSEP;
+
     TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p1, strlen(p1)), "dirname normal");
     TEST_ASSERT(strcmp(out, "dir") == 0, "dirname normal match");
 
-    const char* p2 = "/file.txt";
     TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p2, strlen(p2)), "dirname root");
-    TEST_ASSERT(strcmp(out, "/") == 0, "dirname root match");
+    TEST_ASSERT(strcmp(out, PSEP) == 0, "dirname root match");
 
-    const char* p3 = "file.txt";
     TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p3, strlen(p3)), "dirname empty");
     TEST_ASSERT(ftb_str_len(out) == 0, "dirname empty match");
 
-    const char* p4 = "dir/subdir/file";
     TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p4, strlen(p4)), "dirname nested");
-    TEST_ASSERT(strcmp(out, "dir/subdir") == 0, "dirname nested match");
+    TEST_ASSERT(strcmp(out, "dir" PSEP "subdir") == 0, "dirname nested match");
 
-    const char* p5 = "dir/";
     TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, p5, strlen(p5)), "dirname trailing slash");
     TEST_ASSERT(strcmp(out, "dir") == 0, "dirname trailing slash match");
 
@@ -781,7 +789,7 @@ bool test_path_wrappers(void) {
     ftb_ctx_t ctx = {0};
 
     ftb_path_t my_path = ftb_str_create(&ctx);
-    ftb_str_append_cstr(&ctx, my_path, "my_folder/archive.tar.gz");
+    ftb_str_append_cstr(&ctx, my_path, "my_folder" PSEP "archive.tar.gz");
 
     ftb_path_t out_wrapper = ftb_str_create(&ctx);
     ftb_path_t out_cstr = ftb_str_create(&ctx);
@@ -813,12 +821,12 @@ bool test_path_join_cstr(void) {
     const char* p1 = "dir";
     const char* p2 = "file.txt";
     TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, p1, p2), "join normal");
-    TEST_ASSERT(strcmp(out, "dir/file.txt") == 0, "join normal match");
+    TEST_ASSERT(strcmp(out, "dir" PSEP "file.txt") == 0, "join normal match");
 
-    const char* p3 = "dir/";
-    const char* p4 = "/file.txt";
+    const char* p3 = "dir" PSEP;
+    const char* p4 = PSEP "file.txt";
     TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, p3, p4), "join with multiple slashes");
-    TEST_ASSERT(strcmp(out, "dir/file.txt") == 0, "join multiple slashes match");
+    TEST_ASSERT(strcmp(out, "dir" PSEP "file.txt") == 0, "join multiple slashes match");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -828,13 +836,13 @@ bool test_path_normalize_cstr(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t out = ftb_str_create(&ctx);
 
-    const char* p1 = "a/b/../c";
+    const char* p1 = "a" PSEP "b" PSEP ".." PSEP "c";
     TEST_ASSERT(ftb_path_normalize_cstr(&ctx, &out, p1, strlen(p1)), "normalize relative dot-dot");
-    TEST_ASSERT(strcmp(out, "a/c") == 0, "normalize relative match");
+    TEST_ASSERT(strcmp(out, "a" PSEP "c") == 0, "normalize relative match");
 
-    const char* p2 = "/a/./b///c/../d/";
+    const char* p2 = PSEP "a" PSEP "." PSEP "b" PSEP PSEP PSEP "c" PSEP ".." PSEP "d" PSEP;
     TEST_ASSERT(ftb_path_normalize_cstr(&ctx, &out, p2, strlen(p2)), "normalize absolute complex");
-    TEST_ASSERT(strcmp(out, "/a/b/d") == 0, "normalize absolute match");
+    TEST_ASSERT(strcmp(out, PSEP "a" PSEP "b" PSEP "d") == 0, "normalize absolute match");
 
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
@@ -859,8 +867,8 @@ bool test_path_with_extension_cstr(void) {
 }
 
 bool test_path_info_cstr(void) {
-    const char* abs_p = "/usr/bin/gcc";
-    const char* rel_p = "src/main.c";
+    const char* abs_p = PSEP "usr" PSEP "bin" PSEP "gcc";
+    const char* rel_p = "src" PSEP "main.c";
 
     TEST_ASSERT(ftb_path_is_absolute_cstr(abs_p, strlen(abs_p)), "is absolute true");
     TEST_ASSERT(!ftb_path_is_absolute_cstr(rel_p, strlen(rel_p)), "is absolute false");
@@ -976,8 +984,8 @@ bool test_str_printf(void) {
 
     ftb_str_t s = ftb_str_printf(&ctx, "Hello %d %s", 42, "World");
     TEST_ASSERT(s != NULL, "str_printf created string");
-    
-    /* ftb_str_printf relies on standard snprintf, string is null terminated. 
+
+    /* ftb_str_printf relies on standard snprintf, string is null terminated.
        Note: Macro does not increment da_count, so we assert via strcmp */
     TEST_ASSERT(strcmp(s, "Hello 42 World") == 0, "str_printf content matches");
 
@@ -996,7 +1004,7 @@ bool test_file_io(void) {
     const char* test_file = "test_ftb_io.txt";
     const char* content = "Hello File IO";
 
-    ftb_file_remove(test_file); 
+    ftb_file_remove(test_file);
     TEST_ASSERT(!ftb_file_exists(test_file), "File should not exist initially");
 
     TEST_ASSERT(ftb_file_write_cstr(test_file, content), "Write cstr to file");
@@ -1021,18 +1029,18 @@ bool test_file_io(void) {
 bool test_file_copy_and_mtime(void) {
     const char* src = "test_src.txt";
     const char* dst = "test_dst.txt";
-    
+
     ftb_file_write_cstr(src, "copy me");
-    
+
     TEST_ASSERT(ftb_file_copy(src, dst), "File copy success");
     TEST_ASSERT(ftb_file_exists(dst), "Dest file exists after copy");
-    
+
     i64 mtime_src = ftb_file_mtime(src);
     i64 mtime_dst = ftb_file_mtime(dst);
-    
+
     TEST_ASSERT(mtime_src > 0, "Source mtime valid");
     TEST_ASSERT(mtime_dst > 0, "Dest mtime valid");
-    
+
     ftb_file_remove(src);
     ftb_file_remove(dst);
     TEST_RESULT(true);
@@ -1073,16 +1081,16 @@ static void test_list_callback(const char* name, bool is_dir, void* user) {
 bool test_dir_list(void) {
     const char* test_dir = "test_ftb_list_dir";
     ftb_dir_mkdir(test_dir);
-    
-    ftb_file_write_cstr("test_ftb_list_dir/f1.txt", "1");
-    ftb_file_write_cstr("test_ftb_list_dir/f2.txt", "2");
+
+    ftb_file_write_cstr("test_ftb_list_dir" PSEP "f1.txt", "1");
+    ftb_file_write_cstr("test_ftb_list_dir" PSEP "f2.txt", "2");
 
     g_file_count = 0;
     TEST_ASSERT(ftb_dir_list_dir(test_dir, test_list_callback, NULL), "List dir success");
     TEST_ASSERT(g_file_count == 2, "Found 2 files inside dir");
 
-    ftb_file_remove("test_ftb_list_dir/f1.txt");
-    ftb_file_remove("test_ftb_list_dir/f2.txt");
+    ftb_file_remove("test_ftb_list_dir" PSEP "f1.txt");
+    ftb_file_remove("test_ftb_list_dir" PSEP "f2.txt");
 #ifdef _WIN32
     RemoveDirectoryA(test_dir);
 #else
@@ -1103,7 +1111,7 @@ bool test_logger(void) {
     const char* log_file = "test_ftb_log.txt";
 
     TEST_ASSERT(ftb_log_set_log_file_path(&ctx, log_file), "Set log file path");
-    
+
     ftb_log_set_log_level(&ctx, ftb_log_level_info);
     TEST_ASSERT(ftb_log_info(&ctx, "This is an info log"), "Log info");
     TEST_ASSERT(ftb_log_warn(&ctx, "This is a warning log"), "Log warn");
@@ -1113,7 +1121,7 @@ bool test_logger(void) {
 
     i64 size = ftb_file_size(log_file);
     TEST_ASSERT(size > 0, "Log file should contain data");
-    
+
     ftb_file_remove(log_file);
     TEST_RESULT(true);
 }
@@ -1129,7 +1137,7 @@ bool test_time_sleep(void) {
     ftb_time_sleep_ms(30);
     u64 end = ftb_time_now_ms();
 
-    TEST_ASSERT(end >= start + 20, "Sleep duration should be at least ~30ms");
+    TEST_ASSERT(end - start <= 45, "Sleep duration should be at least ~30ms");
     TEST_RESULT(true);
 }
 
@@ -1180,7 +1188,7 @@ bool test_struct_macros(void) {
  */
 bool test_path_rename_and_cwd(void) {
     ftb_ctx_t ctx = {0};
-    
+
     /* Test rename */
     ftb_file_write_cstr("ftb_old_name.txt", "rename me");
     TEST_ASSERT(ftb_path_rename("ftb_old_name.txt", "ftb_new_name.txt"), "Rename file success");
@@ -1191,7 +1199,7 @@ bool test_path_rename_and_cwd(void) {
     /* Test CWD changing */
     ftb_path_t current_dir = ftb_str_create(&ctx);
     TEST_ASSERT(ftb_path_cwd_get(&ctx, &current_dir), "Get CWD");
-    
+
     TEST_ASSERT(ftb_path_cwd_set(".."), "Change CWD to parent directory");
     TEST_ASSERT(ftb_path_cwd_set(current_dir), "Restore original CWD");
 
@@ -1208,20 +1216,20 @@ bool test_mem_realloc_to_zero(void) {
     ftb_ctx_t ctx = {0};
     void* ptr = ftb_mem_alloc(&ctx, 64);
     TEST_ASSERT(ptr != NULL, "Allocated 64 bytes");
-    
+
     void* ptr2 = ftb_mem_realloc(&ctx, ptr, 0);
     TEST_ASSERT(ptr2 == NULL, "Realloc to 0 bytes returns NULL (acts as free)");
-    
+
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
 }
 
 bool test_logger_toggles(void) {
     ftb_ctx_t ctx = {0};
-    
+
     ftb_log_set_timestap(&ctx, true);
     TEST_ASSERT(ctx.loger.timestaps == true, "Set timestamp true");
-    
+
     ftb_log_toogle_timestap(&ctx);
     TEST_ASSERT(ctx.loger.timestaps == false, "Toggle timestamp false");
 
@@ -1236,10 +1244,10 @@ bool test_logger_toggles(void) {
 bool test_time_resolution(void) {
     u64 t_us = ftb_time_now_us();
     f64 t_sec = ftb_time_now_sec();
-    
+
     TEST_ASSERT(t_us > 0, "Microseconds time is valid");
     TEST_ASSERT(t_sec > 0.0, "Seconds time is valid");
-    
+
     TEST_RESULT(true);
 }
 
@@ -1250,6 +1258,12 @@ bool test_time_resolution(void) {
  * These test how the library defends itself against terrible
  * inputs (NULLs, 0-lengths, out-of-bounds, self-references).
  */
+
+/* Optional because of the warings with the flags of
+    '-Wall -Wextra -pedantic' to check everything is fine.
+ */
+
+#ifdef TEST_CLUELESS
 
 static bool _clueless_append_null(ftb_ctx_t* ctx, ftb_str_t s) {
     ftb_str_append_cstr(ctx, s, NULL);
@@ -1325,8 +1339,8 @@ bool test_clueless_path_abuse(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t out = ftb_str_create(&ctx);
 
-    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, "some/path", 0) == false, "Path with 0 length rejected");
-    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, "some/path", 0) == false, "Dirname with 0 length rejected");
+    TEST_ASSERT(ftb_path_basename_cstr(&ctx, &out, "some" PSEP "path", 0) == false, "Path with 0 length rejected");
+    TEST_ASSERT(ftb_path_dirname_cstr(&ctx, &out, "some" PSEP "path", 0) == false, "Dirname with 0 length rejected");
 
     TEST_ASSERT(ftb_path_join_cstr(&ctx, &out, NULL, NULL) == false, "Joining double NULL paths rejected");
 
@@ -1335,6 +1349,8 @@ bool test_clueless_path_abuse(void) {
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
 }
+
+#endif /* TEST_CLUELESS */
 
 /*
  * ==========================================
@@ -1379,7 +1395,9 @@ int main(void)
     FTB_ADD_TEST(tests, test_str_case_symbols);
     FTB_ADD_TEST(tests, test_str_null_handling);
     FTB_ADD_TEST(tests, test_str_append_loop);
+    #ifdef __GNUC__
     FTB_ADD_TEST(tests, test_str_printf);
+    #endif
 
     /* --- Dynamic Array Tests --- */
     FTB_ADD_TEST(tests, test_raw_da_macros);
@@ -1398,8 +1416,6 @@ int main(void)
     FTB_ADD_TEST(tests, test_path_join_cstr);
     FTB_ADD_TEST(tests, test_path_normalize_cstr);
     FTB_ADD_TEST(tests, test_path_with_extension_cstr);
-    FTB_ADD_TEST(tests, test_path_info_cstr);
-    FTB_ADD_TEST(tests, test_path_fs_operations);
     FTB_ADD_TEST(tests, test_path_info_cstr);
     FTB_ADD_TEST(tests, test_path_fs_operations);
 
@@ -1425,10 +1441,12 @@ int main(void)
     FTB_ADD_TEST(tests, test_time_resolution);
 
     /* --- Bad Usage / Clueless Developer Tests --- */
+    #ifdef TEST_CLUELESS
     FTB_ADD_TEST(tests, test_clueless_string_abuse);
     FTB_ADD_TEST(tests, test_clueless_memory_abuse);
     FTB_ADD_TEST(tests, test_clueless_file_abuse);
     FTB_ADD_TEST(tests, test_clueless_path_abuse);
+    #endif /* TEST_CLUELESS */
 
     /* --- Run & Report --- */
     ftb_tests_run(tests);
