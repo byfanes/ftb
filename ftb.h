@@ -1150,10 +1150,6 @@ FTBDEF bool ftb_log_set_log_level
     return false;
 }
 
-/*
- * INTERNAL HELPERS:
- * Extracted static logic for incredibly robust, platform-aware path manipulation.
- */
 typedef struct {
     const char* ptr;
     u32 count;
@@ -1192,14 +1188,12 @@ static char* _ftb_path_temp_cstr(ftb_ctx_t* FTB_RESTRICT ctx, const char* FTB_RE
     return tmp;
 }
 
-
 FTBDEF bool ftb_path_basename_cstr_n
 (ftb_ctx_t* FTB_RESTRICT ctx, ftb_path_t* FTB_RESTRICT out, const char* FTB_RESTRICT path, const u32 len)
 {
     ftb_error_ret((!ctx || !path || !out),false);
     if(len == 0) {return false;}
     ftb_str_clear(*out);
-
     ftb_str_cut_t cut = _ftb_path_basename_cut(path, len);
     ftb_str_append_cstr_n(ctx, *out, cut.ptr, cut.count);
     return true;
@@ -1223,15 +1217,11 @@ FTBDEF bool ftb_path_dirname_cstr_n
     ftb_error_ret((!ctx || !path || !out),false);
     if(len == 0) {return false;}
     ftb_str_clear(*out);
-
     ftb_str_cut_t cut = _ftb_path_basename_cut(path, len);
     u32 dir_len = len - cut.count;
-
     if (dir_len > 0) {
-        if (dir_len == 1 && _FTB_IS_SEP(path[0])) {
-            /* Do nothing, append the single root slash intact. */
-        } else {
-            dir_len--; /* Peel back trailing separator */
+        if (!(dir_len == 1 && _FTB_IS_SEP(path[0]))) {
+            dir_len--;
         }
         ftb_str_append_cstr_n(ctx, *out, path, dir_len);
     }
@@ -1244,10 +1234,8 @@ FTBDEF bool ftb_path_extension_cstr_n
     ftb_error_ret((!ctx || !path || !out),false);
     ftb_str_clear(*out);
     if(len == 0) {return false;}
-
     ftb_str_cut_t dot = _ftb_path_find_ext_dot(path, len);
     if(!dot.ptr) {return false;}
-
     ftb_str_append_cstr_n(ctx,*out,dot.ptr,dot.count);
     return true;
 }
@@ -1258,10 +1246,8 @@ FTBDEF bool ftb_path_stem_cstr_n
     ftb_error_ret((!ctx || !path || !out), false);
     ftb_str_clear(*out);
     if (len == 0) { return false; }
-
     ftb_str_cut_t base = _ftb_path_basename_cut(path, len);
     ftb_str_cut_t dot = _ftb_path_find_ext_dot(base.ptr, base.count);
-
     u32 copy_len = base.count;
     if (dot.ptr != NULL) {
         copy_len = base.count - dot.count - 1;
@@ -1275,14 +1261,12 @@ FTBDEF bool ftb_path_join_cstr_n
 {
     ftb_error_ret((!ctx || !out || (!p1 && !p2)), false);
     ftb_str_clear(*out);
-
     if (p1 && len1 > 0) {
         ftb_str_append_cstr_n(ctx, *out, p1, len1);
     }
     if (p2 && len2 > 0) {
         bool p1_has_sep = (len1 > 0 && _FTB_IS_SEP(p1[len1 - 1]));
         bool p2_has_sep = _FTB_IS_SEP(p2[0]);
-
         if (p1_has_sep && p2_has_sep) {
             ftb_da_appends(ctx, *out, p2 + 1, len2 - 1);
         } else if (!p1_has_sep && !p2_has_sep && len1 > 0) {
@@ -1302,19 +1286,16 @@ FTBDEF bool ftb_path_normalize_cstr_n
     ftb_error_ret((!ctx || !path || !out), false);
     ftb_str_clear(*out);
     if (len == 0) return true;
-
     typedef struct { const char* ptr; u32 len; } ftb_path_comp_t;
     ftb_path_comp_t* stack = NULL;
     u32 i = 0;
     bool is_abs = _FTB_IS_SEP(path[0]);
-
     while (i < len) {
         while (i < len && _FTB_IS_SEP(path[i])) i++;
         if (i >= len) break;
         u32 start = i;
         while (i < len && !_FTB_IS_SEP(path[i])) i++;
         u32 comp_len = i - start;
-
         if (comp_len == 1 && path[start] == '.') {
             continue;
         } else if (comp_len == 2 && path[start] == '.' && path[start+1] == '.') {
@@ -1338,7 +1319,6 @@ FTBDEF bool ftb_path_normalize_cstr_n
         char sep = FTB_FS_SEP;
         ftb_da_appends(ctx, *out, &sep, 1);
     }
-
     u32 count = ftb_da_count(stack);
     for (u32 j = 0; j < count; j++) {
         ftb_str_append_cstr_n(ctx, *out, stack[j].ptr, stack[j].len);
@@ -1360,10 +1340,8 @@ FTBDEF bool ftb_path_with_extension_cstr_n
 {
     ftb_error_ret((!ctx || !path || !out || !ext), false);
     ftb_str_clear(*out);
-
     ftb_str_cut_t dot = _ftb_path_find_ext_dot(path, len);
     u32 base_len = dot.ptr ? (len - dot.count - 1) : len;
-
     ftb_str_append_cstr_n(ctx, *out, path, base_len);
     if (ext_len > 0) {
         if (ext[0] != '.') {
@@ -1457,7 +1435,6 @@ FTBDEF bool ftb_path_absolute_cstr_n
 {
     ftb_error_ret((!ctx || !path || !out), false);
     ftb_str_clear(*out);
-
     char* tmp = _ftb_path_temp_cstr(ctx, path, len);
 #ifdef _WIN32
     char* resolved = _fullpath(NULL, tmp, 0);
@@ -1466,13 +1443,11 @@ FTBDEF bool ftb_path_absolute_cstr_n
 #endif
     ftb_mem_free(ctx, tmp);
     if (!resolved) return false;
-
     for (int i = 0; resolved[i]; ++i) {
         if (resolved[i] == FTB_FS_SEP_OTHER) {
             resolved[i] = FTB_FS_SEP;
         }
     }
-
     ftb_str_append_cstr_n(ctx, *out, resolved, strlen(resolved));
     FTB_FREE(resolved);
     return true;
