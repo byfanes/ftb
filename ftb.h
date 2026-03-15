@@ -326,7 +326,7 @@ typedef struct {
 #define UNIMPLEMENTED                                                               \
     do {                                                                            \
         fprintf(stderr,"%s:%d: %s is not implemented!",__FILE__,__LINE__,__func__); \
-        abort(0);                                                                   \
+        abort();                                                                    \
     } while(0);
 
 #define ftb_scoped_ctx \
