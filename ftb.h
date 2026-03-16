@@ -27,13 +27,13 @@
 #endif /* _WIN32 */
 
 #if defined(_WIN32)
-    #define FTB_PLATFORM_NAME "Windows";
+    #define FTB_PLATFORM_NAME "Windows"
 #elif defined(__APPLE__)
-    #define FTB_PLATFORM_NAME "macOS";
+    #define FTB_PLATFORM_NAME "macOS"
 #elif defined(__linux__)
-    #define FTB_PLATFORM_NAME "Linux";
+    #define FTB_PLATFORM_NAME "Linux"
 #else
-    #define FTB_PLATFORM_NAME "Unknown";
+    #define FTB_PLATFORM_NAME "Unknown"
 #endif /* FTB_PLATFORM_NAME */
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -168,7 +168,7 @@ typedef uintptr_t   usize;
 #define ftb_da_reserve(ctx,da,amount)                                                         \
 __ftb_da_reserve((da),(amount),                                                               \
 {(header) = ftb_mem_zalloc((ctx), sizeof(*(da)) * _ftb_da_cap + sizeof(ftb_ptr_header_t));},  \
-{da = ftb_mem_realloc((ctx), da, sizeof(*(da)) * _ftb_da_new_cap + sizeof(ftb_ptr_header_t)); \
+{da = ftb_mem_realloc((ctx), da, sizeof(*(da)) * _ftb_da_new_cap);                            \
  ftb_da_set_capacity(da,_ftb_da_new_cap);})
 
 #define ftb_raw_da_reserve(da,amount)                                                         \
@@ -342,7 +342,6 @@ FTBDEF void ftb_mem_delete_ctx(ftb_ctx_t* ctx);
 FTBDEF void* ftb_mem_alloc(ftb_ctx_t* ctx,usize bytes);
 FTBDEF void* ftb_mem_zalloc(ftb_ctx_t* ctx,usize bytes);
 FTBDEF void* ftb_mem_realloc(ftb_ctx_t* ctx,void* ptr,usize bytes);
-FTBDEF void ftb_mem_free(ftb_ctx_t* ctx,void* ptr);
 FTBDEF void ftb_mem_set_mark(ftb_ctx_t* ctx);
 FTBDEF void ftb_mem_cleanup(ftb_ctx_t* ctx);
 
@@ -644,31 +643,15 @@ FTBDEF void* ftb_mem_realloc
 {
     assert(ctx);
     if(!bytes && !ptr) {return 0;}
-    if(!bytes && ptr) {ftb_mem_free(ctx,ptr); return 0;}
+    if(!bytes && ptr) {return 0;}
     if(!ptr && bytes) {return ftb_mem_zalloc(ctx,bytes);}
     u32 cap = ftb_da_capacity(ptr);
     if(cap == bytes) {return ptr;}
-    void* da = 0;
-    if(cap < bytes) {
-        da = ftb_mem_zalloc(ctx,bytes);
-        memcpy(da,ptr,ftb_da_capacity(ptr));
-        ftb_da_set_count(da,ftb_da_count(ptr));
-        ftb_mem_free(ctx,ptr);
-        return da;
-    }
-    ftb_error_ret(cap > bytes,0);
-    assert(0);
-}
-
-FTBDEF void ftb_mem_free
-(ftb_ctx_t* ctx,void* ptr)
-{
-    assert(ctx);
-    if(!ptr) return;
-    ftb_ptr_header_t* a = ftb_da_header(ptr);
-    u32 i = a->addr;
-    FTB_FREE(a);
-    ctx->ptrs.items[i-1] = 0;
+    void* da = ftb_mem_zalloc(ctx,bytes);
+    usize copy_size = (cap < bytes) ? cap : bytes;
+    memcpy(da,ptr,copy_size);
+    ftb_da_set_count(da,ftb_da_count(ptr));
+    return da;
 }
 
 FTBDEF void ftb_mem_set_mark
@@ -764,6 +747,7 @@ FTBDEF ftb_str_t ftb_str_printf
     ftb_da_reserve(ctx, _s, _needed + 1);
     vsnprintf(_s, _needed + 1, fmt, args2);
     va_end(args2);
+    ftb_da_set_count(_s,_needed + 1);
     return _s;
 }
 
@@ -847,7 +831,8 @@ FTBDEF bool ftb_str_trim_right
 {
     ftb_error_ret(!str,false);
     u32 count = ftb_da_count(str);
-    i32 i = count - 2;
+    if(count == 0) {return true;}
+    i32 i = count - 1;
     if(!isspace(str[i])) {return true;}
     for(;i >= 0;--i)
     {
@@ -1038,7 +1023,7 @@ FTBDEF bool __ftb_log
 FTBDEF bool ftb_log
 (ftb_ctx_t* ctx,const char* tag,const char* fmt,...)
 {
-    va_list ap = {0};
+    va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,tag,fmt,ap);
     va_end(ap);
@@ -1050,7 +1035,7 @@ FTBDEF bool ftb_log_info
 {
     ftb_error_ret((!ctx || !fmt),false);
     if(ctx->loger.level > ftb_log_level_info) return true;
-    va_list ap = {0};
+    va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,"INFO",fmt,ap);
     va_end(ap);
@@ -1062,7 +1047,7 @@ FTBDEF bool ftb_log_warn
 {
     ftb_error_ret((!ctx || !fmt),false);
     if(ctx->loger.level > ftb_log_level_warn) return true;
-    va_list ap = {0};
+    va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,"WARN",fmt,ap);
     va_end(ap);
@@ -1074,7 +1059,7 @@ FTBDEF bool ftb_log_error
 {
     ftb_error_ret((!ctx || !fmt),false);
     if(ctx->loger.level > ftb_log_level_error) return true;
-    va_list ap = {0};
+    va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,"ERROR",fmt,ap);
     va_end(ap);
@@ -1086,8 +1071,8 @@ FTBDEF bool ftb_log_debug
 (ftb_ctx_t* ctx,const char* fmt,...)
 {
     ftb_error_ret((!ctx || !fmt),false);
-    if(ctx->loger.level > ftb_log_debug) return true;
-    va_list ap = {0};
+    if(ctx->loger.level > ftb_log_level_all) return true;
+    va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,"DEBUG",fmt,ap);
     va_end(ap);
@@ -1386,12 +1371,10 @@ FTBDEF bool ftb_path_exists_cstr_n
     char* tmp = _ftb_path_temp_cstr(ctx, path, len);
 #ifdef _WIN32
     DWORD attrs = GetFileAttributesA(tmp);
-    ftb_mem_free(ctx, tmp);
     return (attrs != INVALID_FILE_ATTRIBUTES);
 #else
     struct stat st;
     bool exists = (stat(tmp, &st) == 0);
-    ftb_mem_free(ctx, tmp);
     return exists;
 #endif
 }
@@ -1403,12 +1386,10 @@ FTBDEF bool ftb_path_is_file_cstr_n
     char* tmp = _ftb_path_temp_cstr(ctx, path, len);
 #ifdef _WIN32
     DWORD attrs = GetFileAttributesA(tmp);
-    ftb_mem_free(ctx, tmp);
     return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
 #else
     struct stat st;
     bool is_f = (stat(tmp, &st) == 0 && S_ISREG(st.st_mode));
-    ftb_mem_free(ctx, tmp);
     return is_f;
 #endif
 }
@@ -1420,12 +1401,10 @@ FTBDEF bool ftb_path_is_dir_cstr_n
     char* tmp = _ftb_path_temp_cstr(ctx, path, len);
 #ifdef _WIN32
     DWORD attrs = GetFileAttributesA(tmp);
-    ftb_mem_free(ctx, tmp);
     return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY));
 #else
     struct stat st;
     bool is_d = (stat(tmp, &st) == 0 && S_ISDIR(st.st_mode));
-    ftb_mem_free(ctx, tmp);
     return is_d;
 #endif
 }
@@ -1441,7 +1420,6 @@ FTBDEF bool ftb_path_absolute_cstr_n
 #else
     char* resolved = realpath(tmp, NULL);
 #endif
-    ftb_mem_free(ctx, tmp);
     if (!resolved) return false;
     for (int i = 0; resolved[i]; ++i) {
         if (resolved[i] == FTB_FS_SEP_OTHER) {

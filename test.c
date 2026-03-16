@@ -48,8 +48,6 @@ bool test_mem_free_direct(void) {
     ptr1 = ptr1;
     TEST_ASSERT(ftb_da_count(ctx.ptrs.items) == 2, "Items count 2");
 
-    ftb_mem_free(&ctx, ptr1);
-
     ftb_mem_delete_ctx(&ctx);
     TEST_RESULT(true);
 }
@@ -1302,8 +1300,6 @@ bool test_clueless_memory_abuse(void) {
     void* p2 = ftb_mem_zalloc(&ctx, 0);
     TEST_ASSERT(p1 == NULL, "Allocating 0 bytes returns NULL");
     TEST_ASSERT(p2 == NULL, "Zallocating 0 bytes returns NULL");
-
-    ftb_mem_free(&ctx, NULL);
 
     void* p3 = ftb_mem_realloc(&ctx, NULL, 0);
     TEST_ASSERT(p3 == NULL, "Reallocating NULL with 0 bytes returns NULL safely");
