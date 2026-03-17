@@ -168,7 +168,7 @@ typedef uintptr_t   usize;
 #define ftb_da_reserve(ctx,da,amount)                                                         \
 __ftb_da_reserve((da),(amount),                                                               \
 {(header) = ftb_mem_zalloc((ctx), sizeof(*(da)) * _ftb_da_cap + sizeof(ftb_ptr_header_t));},  \
-{da = ftb_mem_realloc((ctx), da, sizeof(*(da)) * _ftb_da_new_cap);                            \
+{da = ftb_mem_realloc((ctx), da, sizeof(*(da)) * _ftb_da_new_cap + sizeof(ftb_ptr_header_t)); \
  ftb_da_set_capacity(da,_ftb_da_new_cap);})
 
 #define ftb_raw_da_reserve(da,amount)                                                         \
