@@ -153,7 +153,7 @@ typedef uintptr_t   usize;
     for (type_ptr it = (da); (da) != NULL && it < (da) + ftb_da_count(da); ++it)
 #define ftb_da_empty(da) ((da) == NULL || ftb_da_count(da) == 0)
 
-/* For ftb_da_reserve
+/* For ftb_da_reserve macro
  *   amount -> is in count in da's type which will be added with existing capacity
  *   ctx -> can be a pointer to context or be null for raw allocation
  *   da -> can be a null pointer or existing da pointer
@@ -192,7 +192,7 @@ typedef uintptr_t   usize;
         }                                                                                 \
     } while(0)
 
-/* For ftb_da_append & ftb_da_appends
+/* For ftb_da_append ftb_da_appends macro
  *   items_count -> is in count in da's type which will be added with existing capacity
  *   items -> a pointer to an array of element which will copied in size of items_count
  *   item -> an element which will copied
@@ -249,7 +249,6 @@ typedef uintptr_t   usize;
 #define FTB_ALIGN_UP(x,a) (((x)+(a)-1) & ~((a)-1))
 #define FTB_ALIGN_DOWN(x,a) ((x) & ~((a)-1))
 #define FTB_ENUM_TO_STRING(val) #val
-#define FTB_UNUSED(x) (void)x
 #define FTB_IS_POW2(x) (((x) != 0) && (((x) & ((x) - 1)) == 0))
 #define FTB_OFFSET_OF(type, member) ((usize)&(((type*)0)->member))
 #define FTB_CONTAINER_OF(ptr, type, member) ((type *)((char *)(ptr) - FTB_OFFSET_OF(type, member)))
@@ -285,8 +284,8 @@ typedef struct {
 } ftb_ptr_header_t;
 
 /* For ftb_mem_ptr_list_t struct
- * marks -> a da list for storing the marks.Marks are an u32 which indexing via items' count.
- * items -> a da list for allocated pointers which are will be managed by context.
+ *   marks -> a da list for storing the marks.Marks are an u32 which indexing via items' count.
+ *   items -> a da list for allocated pointers which are will be managed by context.
  */
 typedef struct {
     ftb_ptr_header_t** items;
@@ -306,33 +305,33 @@ typedef enum {
     ftb_log_level_error,
 } ftb_ctx_log_level_t;
 
-/* For ftb_ctx_loger_t
- * log_file -> The file pointer to output the logs default is stdout it can be change.
- * log_level -> The level of logs which can pass through.
- * timestaps -> Turns on/off the log time for each printted log.
- * __close_file -> Private.Determines will the log_file should close or not.
+/* For ftb_ctx_logger_t struct
+ *   log_file -> The file pointer to output the logs default is stdout it can be change.
+ *   log_level -> The level of logs which can pass through.
+ *   timestaps -> Turns on/off the log time for each printted log.
+ *   __close_file -> Private.Determines will the log_file should close or not.
  */
 typedef struct {
     FILE* log_file;
     bool __close_file;
     bool timestaps;
     ftb_ctx_log_level_t level;
-} ftb_ctx_loger_t;
+} ftb_ctx_logger_t;
 
-/* For ftb_ctx_t
- * loger -> the library's log utils' config
- * ptrs -> stroes all of the marks to turn back and the pointer which allocated
+/* For ftb_ctx_t struct
+ *   logger -> the library's log utils' config
+ *   ptrs -> stroes all of the marks to turn back and the pointer which allocated
  */
 typedef struct {
     ftb_mem_ptr_list_t ptrs;
-    ftb_ctx_loger_t loger;
+    ftb_ctx_logger_t logger;
 } ftb_ctx_t;
 
-/* For ftb_test_t
- * name -> The test suit's name.Can set manually but FTB_ADD_TEST automaticly sets it.
- * res -> After the test ran the result stored here.
- * time_usec -> How much time it take to run the test is stored here.
- * func -> The test's pointer.Test should not take any argument and return a bool.
+/* For ftb_test_t struct
+ *   name -> The test suit's name.Can set manually but FTB_ADD_TEST automaticly sets it.
+ *   res -> After the test ran the result stored here.
+ *   time_usec -> How much time it take to run the test is stored here.
+ *   func -> The test's pointer.Test should not take any argument and return a bool.
  */
 typedef struct {
     const char* name;
@@ -346,7 +345,7 @@ typedef struct {
  * Every returned false is functions has failed
  */
          
-/* For ftb_mem_[_/z/re]alloc function
+/* For ftb_mem_alloc ftb_mem_zalloc ftb_mem_realloc function
  *   bytes -> It should not contain the ftb_ptr_header_t size it is automaticly added.
  *          -> can be 0 which in that case it will return 0.
  *          -> takes bytes as in raw size in bytes(not as a count).
@@ -366,7 +365,7 @@ FTBDEF void* ftb_mem_realloc(ftb_ctx_t* ctx,void* ptr,usize bytes);
  */
 FTBDEF void ftb_mem_free(ftb_ctx_t* ctx,void* ptr);
 
-/* For ftb_mem_delete_ctx functions
+/* For ftb_mem_delete_ctx function
  *   ctx -> pointer to context.Can be null it will instantly return
  *       -> when the function successfuly return the context will be set to 0
  *   Iterates over the items and frees and sets to 0.
@@ -387,25 +386,25 @@ FTBDEF void ftb_mem_set_mark(ftb_ctx_t* ctx);
  */
 FTBDEF void ftb_mem_cleanup(ftb_ctx_t* ctx);
 
-/* For ftb_time_now_ms
+/* For ftb_time_now_ms function
  *   -dep -> Operating system
  *   ret u64 -> Current time in ms.
  */
 FTBDEF u64 ftb_time_now_ms(void);
 
-/* For ftb_time_now_us
+/* For ftb_time_now_us function
  *   -dep -> Operating system
  *   ret u64 -> Current time in us.
  */
 FTBDEF u64 ftb_time_now_us(void);
 
-/* For ftb_time_now_sec
+/* For ftb_time_now_sec function
  *   -dep -> Operating system
  *   ret f64 -> Current time in sec.
  */
 FTBDEF f64 ftb_time_now_sec(void);
 
-/* For ftb_time_sleep_ms
+/* For ftb_time_sleep_ms function
  *   -dep -> Operating system
  *   ms -> Amount of time to sleep in ms.
  */
@@ -482,17 +481,62 @@ FTBDEF bool ftb_test_report_redirect(ftb_test_t* tests,FILE* fptr);
 #define ftb_test_assert(cond, msg) do { if (!(cond)) { ftb_test_result(false); } } while (0)
 #endif /* FTB_TEST_CRASH */
 
+/* For __ftb_log function private
+ * ctx -> Pointer to context.
+ * tag -> The tag in c-str of the log which will be printted like [tag].
+ * fmt -> The format in c-str style which will be used in vprintf.
+ * ap  -> va_list the varible argumant list which will be taken from other functions.
+ * ret bool -> false or failure and it can be about null ctx,tag or fmt or vprintf have failed.
+ *          -> true for success.
+ */
 FTBDEF bool __ftb_log
 (ftb_ctx_t* ctx,const char* tag,const char* fmt,va_list ap);
+
+/* For ftb_log ftb_log_info ftb_log_warn ftb_log_error ftb_log_debug function
+ * ctx -> Pointer to context.
+ * tag -> The tag which will be given automaticly by the function or user passes.
+ * fmt -> The format in c-str style which will be used in vprintf.
+ * ret bool -> false or failure and it can be about null ctx,tag or fmt or vprintf have failed.
+ *          -> true for success.
+ */
 FTBDEF bool ftb_log(ftb_ctx_t* ctx,const char* tag,const char* fmt,...);
 FTBDEF bool ftb_log_info(ftb_ctx_t* ctx,const char* fmt,...);
 FTBDEF bool ftb_log_warn(ftb_ctx_t* ctx,const char* fmt,...);
 FTBDEF bool ftb_log_error(ftb_ctx_t* ctx,const char* fmt,...);
 FTBDEF bool ftb_log_debug(ftb_ctx_t* ctx,const char* fmt,...);
+
+/* For ftb_log_set_timestap function
+ * ctx -> Pointer to context.
+ * x -> true/false to set timestap.
+ * ret bool -> false if ctx is null otherwise true.
+ */
 FTBDEF bool ftb_log_set_timestap(ftb_ctx_t* ctx,bool x);
+
+/* For ftb_log_toggle_timestap function
+ * ctx -> Pointer to context.
+ * ret bool -> false if ctx is null otherwise true.
+ */
 FTBDEF bool ftb_log_toogle_timestap(ftb_ctx_t* ctx);
+
+/* For ftb_log_set_log_file_path function
+ * ctx -> Pointer to context.
+ * path -> The path to the log file for printing.Which will be open with fopen("w").
+ * ret bool -> If ctx or path is null or it could not open the file it returns false.
+ */
 FTBDEF bool ftb_log_set_log_file_path(ftb_ctx_t* ctx,const char* path);
+
+/* For ftb_log_set_log_file function
+ * ctx -> Pointer to context.
+ * file -> The file pointer to redirecting assuming it has write access.
+ * ret bool -> If ctx or file is null it returns false.Otherwise it returns true
+ */
 FTBDEF bool ftb_log_set_log_file(ftb_ctx_t* ctx,FILE* file);
+
+/* For ftb_log_set_log_level function
+ * ctx -> Pointer to context.
+ * level -> The level of logging which determines by 'ftb_ctx_log_level_t'
+ * ret bool -> If ctx is null or level is out of bound is null it returns false.
+ */
 FTBDEF bool ftb_log_set_log_level(ftb_ctx_t* ctx,ftb_ctx_log_level_t level);
 
 #endif /* FTB_H_ */
@@ -588,8 +632,8 @@ FTBDEF void ftb_mem_delete_ctx
     }
     if(ctx->ptrs.marks)
     { ftb_mem_free(FTB_RAW,ctx->ptrs.marks); }
-    if(ctx->loger.__close_file)
-    { fclose(ctx->loger.log_file); }
+    if(ctx->logger.__close_file)
+    { fclose(ctx->logger.log_file); }
     FTB_ZERO(*ctx);
 }
 
@@ -713,8 +757,8 @@ FTBDEF void ftb_time_sleep_ms
 FTBDEF bool __ftb_log
 (ftb_ctx_t* ctx,const char* tag,const char* fmt,va_list ap)
 {
-    assert(ctx);
-    if(!ctx->loger.log_file) return true;
+    if(!ctx || !tag || !fmt) return false;
+    if(!ctx->logger.log_file) return true;
     u32 tag_len = strlen(tag);
     u32 fmt_len = strlen(fmt);
     u32 len = fmt_len + tag_len + 64;
@@ -726,7 +770,7 @@ FTBDEF bool __ftb_log
         buf = (char*)ftb_alloca(len);
     }
     u32 index = 0;
-    if(ctx->loger.timestaps) {
+    if(ctx->logger.timestaps) {
         time_t t = time(NULL);
         struct tm *tm = localtime(&t);
         sprintf(buf,"[%02d:%02d:%02d] ", tm->tm_hour, tm->tm_min, tm->tm_sec);
@@ -741,7 +785,7 @@ FTBDEF bool __ftb_log
     index += fmt_len;
     buf[index++] = '\n';
     buf[index++] = '\0';
-    i32 err = vfprintf(ctx->loger.log_file,buf,ap);
+    i32 err = vfprintf(ctx->logger.log_file,buf,ap);
     if(len >= FTB_KB(10)) { FTB_FREE(buf); }
     return (err < 0) ? false : true;
 }
@@ -759,8 +803,7 @@ FTBDEF bool ftb_log
 FTBDEF bool ftb_log_info
 (ftb_ctx_t* ctx,const char* fmt,...)
 {
-    ftb_error_ret((!ctx || !fmt),false);
-    if(ctx->loger.level > ftb_log_level_info) return true;
+    if(ctx->logger.level > ftb_log_level_info) return true;
     va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,"INFO",fmt,ap);
@@ -771,8 +814,7 @@ FTBDEF bool ftb_log_info
 FTBDEF bool ftb_log_warn
 (ftb_ctx_t* ctx,const char* fmt,...)
 {
-    ftb_error_ret((!ctx || !fmt),false);
-    if(ctx->loger.level > ftb_log_level_warn) return true;
+    if(ctx->logger.level > ftb_log_level_warn) return true;
     va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,"WARN",fmt,ap);
@@ -783,8 +825,7 @@ FTBDEF bool ftb_log_warn
 FTBDEF bool ftb_log_error
 (ftb_ctx_t* ctx,const char* fmt,...)
 {
-    ftb_error_ret((!ctx || !fmt),false);
-    if(ctx->loger.level > ftb_log_level_error) return true;
+    if(ctx->logger.level > ftb_log_level_error) return true;
     va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,"ERROR",fmt,ap);
@@ -796,8 +837,7 @@ FTBDEF bool ftb_log_error
 FTBDEF bool ftb_log_debug
 (ftb_ctx_t* ctx,const char* fmt,...)
 {
-    ftb_error_ret((!ctx || !fmt),false);
-    if(ctx->loger.level > ftb_log_level_all) return true;
+    if(ctx->logger.level > ftb_log_level_all) return true;
     va_list ap;
     va_start(ap,fmt);
     bool err = __ftb_log(ctx,"DEBUG",fmt,ap);
@@ -808,8 +848,8 @@ FTBDEF bool ftb_log_debug
 FTBDEF bool ftb_log_debug
 (ftb_ctx_t* ctx,const char* fmt,...)
 {
-    UNUSED(ctx);
-    UNUSED(fmt);
+    FTB_UNUSED(ctx);
+    FTB_UNUSED(fmt);
     return true;
 }
 #endif /* defined(DEBUG) || defined(FTB_DEBUG) */
@@ -818,7 +858,7 @@ FTBDEF bool ftb_log_set_timestap
 (ftb_ctx_t* ctx,bool x)
 {
     ftb_error_ret(!ctx,false);
-    ctx->loger.timestaps = x;
+    ctx->logger.timestaps = x;
     return true;
 }
 
@@ -826,27 +866,27 @@ FTBDEF bool ftb_log_toogle_timestap
 (ftb_ctx_t* ctx)
 {
     ftb_error_ret(!ctx,false);
-    ctx->loger.timestaps = !ctx->loger.timestaps;
+    ctx->logger.timestaps = !ctx->logger.timestaps;
     return true;
 }
 
 FTBDEF bool ftb_log_set_log_file_path
 (ftb_ctx_t* ctx,const char* path)
 {
-    ftb_error_ret(!ctx,false);
+    ftb_error_ret((!ctx || !path),false);
     FILE* fptr = 0;
     fptr = fopen(path,"w");
     if(!fptr) return false;
-    ctx->loger.log_file = fptr;
-    ctx->loger.__close_file = true;
+    ctx->logger.log_file = fptr;
+    ctx->logger.__close_file = true;
     return true;
 }
 
 FTBDEF bool ftb_log_set_log_file
 (ftb_ctx_t* ctx,FILE* file)
 {
-    ftb_error_ret(!ctx,false);
-    ctx->loger.log_file = file;
+    ftb_error_ret((!ctx || !file),false);
+    ctx->logger.log_file = file;
     return true;
 }
 
@@ -855,7 +895,7 @@ FTBDEF bool ftb_log_set_log_level
 {
     ftb_error_ret(!ctx,false);
     if(level >= ftb_log_level_all && level <= ftb_log_level_error) {
-        ctx->loger.level = level;
+        ctx->logger.level = level;
         return true;
     }
     return false;

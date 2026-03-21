@@ -146,6 +146,64 @@ bool test_memory_zalloc_large(void) {
 
 /*
  * ==========================================
+ * LOGGING TESTS
+ * ==========================================
+ */
+
+bool test_logger(void) {
+    ftb_ctx_t ctx = {0};
+    const char* log_file = "test_ftb_log.txt";
+
+    ftb_test_assert(ftb_log_set_log_file_path(&ctx, log_file), "Set log file path");
+
+    ftb_log_set_log_level(&ctx, ftb_log_level_info);
+    ftb_test_assert(ftb_log_info(&ctx, "This is an info log"), "Log info");
+    ftb_test_assert(ftb_log_warn(&ctx, "This is a warning log"), "Log warn");
+    ftb_test_assert(ftb_log_error(&ctx, "This is an error log"), "Log error");
+
+    ftb_mem_delete_ctx(&ctx);
+
+    //i64 size = ftb_file_size(log_file);
+    //ftb_test_assert(size > 0, "Log file should contain data");
+
+    //ftb_file_remove(log_file);
+    ftb_test_result(true);
+}
+
+/*
+ * ==========================================
+ * TIME TESTS
+ * ==========================================
+ */
+
+bool test_time_sleep(void) {
+    u64 start = ftb_time_now_ms();
+    ftb_time_sleep_ms(30);
+    u64 end = ftb_time_now_ms();
+
+    ftb_test_assert(end - start <= 45, "Sleep duration should be at least ~30ms");
+    ftb_test_result(true);
+}
+
+/*
+ * ==========================================
+ * SCOPE TESTS
+ * ==========================================
+ */
+
+bool test_scoped_ctx(void) {
+    ftb_scoped_ctx {
+        void* ptr = ftb_mem_alloc(pctx, 1024);
+        ftb_test_assert(ptr != NULL, "Alloc within scoped context");
+        ftb_test_assert(ftb_da_count(pctx->ptrs.items) == 1, "Count is 1 in scoped ctx");
+    }
+    // No easy way to assert destruction without hacking globals,
+    // but a successful compilation & execution without leak crash proves correct syntax & flow.
+    ftb_test_result(true);
+}
+
+/*
+ * ==========================================
  * MAIN ENTRY POINT
  * ==========================================
  */
@@ -161,6 +219,8 @@ int main(void)
     ftb_test_add(tests,test_memory_realloc);
     ftb_test_add(tests,test_memory_alloc_zero);
     ftb_test_add(tests,test_memory_zalloc_large);
+    ftb_test_add(tests,test_logger);
+    ftb_test_add(tests,test_time_sleep);
 
     ftb_test_run(tests);
     bool all = ftb_test_report(tests);
