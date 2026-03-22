@@ -7,12 +7,16 @@
     #include <windows.h>
     #include <malloc.h>
     #include <direct.h>
+    #include <shellapi.h>
     #define FTB_IS_OS_WINDOWS true
     #define FTB_IS_OS_POSIX false
     #define ftb_alloca _alloca
 #else /* _WIN32 */
     #define FTB_FS_SEP '/'
     #define FTB_FS_SEP_OTHER '\\'
+    #define _XOPEN_SOURCE 500
+    #define _GNU_SOURCE
+    #include <ftw.h>
     #include <sys/stat.h>
     #include <unistd.h>
     #include <limits.h>
@@ -110,8 +114,6 @@ typedef double f64;
 typedef intptr_t    isize;
 typedef uintptr_t   usize;
 
-#define FTB_INIT_CAP 16
-#define FTB_STR_DEF_CAP 64
 #ifndef FTB_DA_INIT_CAPACITY
 #define FTB_DA_INIT_CAPACITY 16
 /* Calculation for the size is FTB_DA_INIT_CAPACITY*(sizeof(*da)) */
@@ -152,6 +154,19 @@ typedef uintptr_t   usize;
 #define ftb_da_foreach(type_ptr, it, da) \
     for (type_ptr it = (da); (da) != NULL && it < (da) + ftb_da_count(da); ++it)
 #define ftb_da_empty(da) ((da) == NULL || ftb_da_count(da) == 0)
+#define ftb_da_check_and_add_null(ctx,da)   \
+    do {                                    \
+        if((da) == NULL) {                  \
+            ftb_da_append((ctx),(da),0);    \
+        } else {                            \
+            u32 count = ftb_da_count(da);   \
+            if((da)[count-1] != 0) {        \
+                ftb_da_append((ctx),(da),0);\
+            }                               \
+        }                                   \
+    } while(0)
+#define ftb_da_add_shadow_null(ctx,da) \
+    do { ftb_da_append((ctx),(da),0);ftb_da_count_dec((da)); } while(0)
 
 /* For ftb_da_reserve macro
  *   amount -> is in count in da's type which will be added with existing capacity
@@ -179,11 +194,9 @@ typedef uintptr_t   usize;
             usize da_s = ftb_da_capacity((da)) + amount*sizeof(*(da));                    \
             header = ftb_da_header((da));                                                 \
             if((ctx) == FTB_RAW) {                                                        \
+                u32 count = ftb_da_count((da)), cap = ftb_da_capacity((da));              \
                 header = FTB_REALLOC(header,da_s + sizeof(ftb_ptr_header_t));             \
-                memset(                                                                   \
-                    header + sizeof(ftb_ptr_header_t) + ftb_da_capacity((da)),            \
-                    0, amount*sizeof(*(da))                                               \
-                    );                                                                    \
+                memset(header + sizeof(ftb_ptr_header_t) + cap,0, amount*sizeof(*(da)));  \
                 header->elsize = sizeof(*(da));                                           \
                 header->capacity = da_s;                                                  \
                 header->count = ftb_da_count((da));                                       \
@@ -225,7 +238,7 @@ typedef uintptr_t   usize;
         fprintf(stderr,"%s:%d: %s is not implemented!",__FILE__,__LINE__,__func__); \
         abort();                                                                    \
     } while(0);
-            
+
 #define FTB_MIN(a,b) ((a) < (b) ? (a) : (b))
 #define FTB_MAX(a,b) ((a) > (b) ? (a) : (b))
 #define FTB_CLAMP(x,min,max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
@@ -267,7 +280,7 @@ typedef uintptr_t   usize;
     for (ftb_ctx_t ctx = {0}, *pctx = &ctx, *_ftb_guard_##__LINE__ = &ctx; \
          _ftb_guard_##__LINE__; \
          ftb_mem_delete_ctx(pctx), _ftb_guard_##__LINE__ = NULL)
-    
+
 /* For ftb_ptr_header_t struct
  *   addr -> the index points to ctx pointer buffer for future changes
  *        -> it can -1 which indicates its a raw pointer
@@ -319,8 +332,8 @@ typedef struct {
 } ftb_ctx_logger_t;
 
 /* For ftb_ctx_t struct
- *   logger -> the library's log utils' config
- *   ptrs -> stroes all of the marks to turn back and the pointer which allocated
+ *   logger -> the library's log utils' config.
+ *   ptrs -> stroes all of the marks to turn back and the pointer which allocated.
  */
 typedef struct {
     ftb_mem_ptr_list_t ptrs;
@@ -344,7 +357,7 @@ typedef struct {
  * Every returned true is functions done succesfuly
  * Every returned false is functions has failed
  */
-         
+
 /* For ftb_mem_alloc ftb_mem_zalloc ftb_mem_realloc function
  *   bytes -> It should not contain the ftb_ptr_header_t size it is automaticly added.
  *          -> can be 0 which in that case it will return 0.
@@ -371,7 +384,7 @@ FTBDEF void ftb_mem_free(ftb_ctx_t* ctx,void* ptr);
  *   Iterates over the items and frees and sets to 0.
  *   If a log file is open it closes.
  *   items & marks lists are freed and set to 0.
- */ 
+ */
 FTBDEF void ftb_mem_delete_ctx(ftb_ctx_t* ctx);
 
 /* For ftb_mem_set_mark function
@@ -414,7 +427,7 @@ FTBDEF void ftb_time_sleep_ms(u32 ms);
  *   tests -> The da list of ftb_test_t which are test will be run and
  *         -> will be reported the result with their run time
  *   ret bool -> If it encounters a vaild pointer it will fail with false.
- *            -> In success or tests being null it will return true.
+ *            -> In success or 'tests' being null it will return true.
  */
 FTBDEF bool ftb_test_run(ftb_test_t* tests);
 
@@ -425,7 +438,7 @@ FTBDEF bool ftb_test_report(ftb_test_t* tests);
 
 /* For ftb_test_report_redirect function
  *   tests -> The da list of ftb_test_t.Can not be 0 in that case it fails.
- *   fptr -> The pointer to FILE.Can not be 0 in that case it fails.
+ *   fptr -> The pointer to file.Can not be 0 in that case it fails.
  *   ret bool -> Returns if all the tests passed or not.
  *   Prints the list of tests their name,result & time.
  */
@@ -446,7 +459,7 @@ FTBDEF bool ftb_test_report_redirect(ftb_test_t* tests,FILE* fptr);
  *   cond -> if statement which if its false it will be triggered.
  *   msg -> a 'char*' which contains the message for the failure .
  *   If a condition fails it will exit the whole program with an error.
- */    
+ */
 #define ftb_test_direct_assert(cond,msg)          \
     do {                                          \
         if(!(cond)) {                             \
@@ -465,7 +478,7 @@ FTBDEF bool ftb_test_report_redirect(ftb_test_t* tests,FILE* fptr);
  *   msg -> a 'char*' which contains the message for the failure .
  *   -dep -> FTB_TEST_CRASH
  *   If 'FTB_TEST_CRASH' defined it will exit program with an error
- *       with any condition which is failed. 
+ *       with any condition which is failed.
  *   If 'FTB_TEST_CRASH' is not defined it will be return the failrue
  *       or continue the test.
  */
@@ -482,22 +495,22 @@ FTBDEF bool ftb_test_report_redirect(ftb_test_t* tests,FILE* fptr);
 #endif /* FTB_TEST_CRASH */
 
 /* For __ftb_log function private
- * ctx -> Pointer to context.
- * tag -> The tag in c-str of the log which will be printted like [tag].
- * fmt -> The format in c-str style which will be used in vprintf.
- * ap  -> va_list the varible argumant list which will be taken from other functions.
- * ret bool -> false or failure and it can be about null ctx,tag or fmt or vprintf have failed.
- *          -> true for success.
+ *   ctx -> Pointer to context.
+ *   tag -> The tag in c-str of the log which will be printted like [tag].
+ *   fmt -> The format in c-str style which will be used in vprintf.
+ *   ap  -> va_list the varible argumant list which will be taken from other functions.
+ *   ret bool -> false or failure and it can be about null 'ctx','tag' or 'fmt' or
+ *            -> vprintf have failed and true for success.
  */
 FTBDEF bool __ftb_log
 (ftb_ctx_t* ctx,const char* tag,const char* fmt,va_list ap);
 
 /* For ftb_log ftb_log_info ftb_log_warn ftb_log_error ftb_log_debug function
- * ctx -> Pointer to context.
- * tag -> The tag which will be given automaticly by the function or user passes.
- * fmt -> The format in c-str style which will be used in vprintf.
- * ret bool -> false or failure and it can be about null ctx,tag or fmt or vprintf have failed.
- *          -> true for success.
+ *   ctx -> Pointer to context.
+ *   tag -> The tag which will be given automaticly by the function or user passes.
+ *   fmt -> The format in c-str style which will be used in vprintf.
+ *   ret bool -> false or failure and it can be about null 'ctx','tag' or 'fmt' or
+ *            -> vprintf have failed and true for success.
  */
 FTBDEF bool ftb_log(ftb_ctx_t* ctx,const char* tag,const char* fmt,...);
 FTBDEF bool ftb_log_info(ftb_ctx_t* ctx,const char* fmt,...);
@@ -506,38 +519,176 @@ FTBDEF bool ftb_log_error(ftb_ctx_t* ctx,const char* fmt,...);
 FTBDEF bool ftb_log_debug(ftb_ctx_t* ctx,const char* fmt,...);
 
 /* For ftb_log_set_timestap function
- * ctx -> Pointer to context.
- * x -> true/false to set timestap.
- * ret bool -> false if ctx is null otherwise true.
+ *   ctx -> Pointer to context.
+ *   x -> true/false to set timestap.
+ *   ret bool -> false if 'ctx' is null otherwise true.
  */
 FTBDEF bool ftb_log_set_timestap(ftb_ctx_t* ctx,bool x);
 
 /* For ftb_log_toggle_timestap function
- * ctx -> Pointer to context.
- * ret bool -> false if ctx is null otherwise true.
+ *   ctx -> Pointer to context.
+ *   ret bool -> false if 'ctx' is null otherwise true.
  */
 FTBDEF bool ftb_log_toogle_timestap(ftb_ctx_t* ctx);
 
 /* For ftb_log_set_log_file_path function
- * ctx -> Pointer to context.
- * path -> The path to the log file for printing.Which will be open with fopen("w").
- * ret bool -> If ctx or path is null or it could not open the file it returns false.
+ *   ctx -> Pointer to context.
+ *   path -> The path to the log file for printing.Which will be open with fopen("w").
+ *   ret bool -> If 'ctx' or 'path' is null or it could not open the file it returns false.
  */
 FTBDEF bool ftb_log_set_log_file_path(ftb_ctx_t* ctx,const char* path);
 
 /* For ftb_log_set_log_file function
- * ctx -> Pointer to context.
- * file -> The file pointer to redirecting assuming it has write access.
- * ret bool -> If ctx or file is null it returns false.Otherwise it returns true
+ *   ctx -> Pointer to context.
+ *   file -> The file pointer to redirecting assuming it has write access.
+ *   ret bool -> If 'ctx' or 'file' is null it returns false.Otherwise it returns true
  */
 FTBDEF bool ftb_log_set_log_file(ftb_ctx_t* ctx,FILE* file);
 
 /* For ftb_log_set_log_level function
- * ctx -> Pointer to context.
- * level -> The level of logging which determines by 'ftb_ctx_log_level_t'
- * ret bool -> If ctx is null or level is out of bound is null it returns false.
+ *   ctx -> Pointer to context.
+ *   level -> The level of logging which determines by 'ftb_ctx_log_level_t'
+ *   ret bool -> If 'ctx' is null or 'level' is out of bound is null it returns false.
  */
 FTBDEF bool ftb_log_set_log_level(ftb_ctx_t* ctx,ftb_ctx_log_level_t level);
+
+/* For ftb_bytes_t type
+ *   A da list for u8 it is not null terminated.Use count instead.
+ */
+typedef u8* ftb_bytes_t;
+
+/* For ftb_path_t type
+ *   A da list for u8.
+ */
+typedef u8* ftb_path_t;
+
+FTBDEF ftb_path_t ftb_path_make_from_cstr(ftb_ctx_t* ctx,const char* str);
+
+/* For ftb_file_read function
+ *   ctx -> Pointing to the context.
+ *   path -> The path which is pointing to the file to read.
+ *   ret ftb_bytes_t -> If 'ctx' or 'path' is null or if it could not read or open the file
+ *                   -> it returns 0 otherwise it returns a da list which is ctx'ed
+ */
+FTBDEF ftb_bytes_t ftb_file_read(ftb_ctx_t* ctx,ftb_path_t path);
+
+/* For ftb_file_size function
+ *   -dep -> Operating System.
+ *   path -> The path which is pointing to the file to get its size in bytes.
+ *   ret i64 -> If 'path' is null or if it could not open the file it returns -1.
+ */
+FTBDEF i64 ftb_file_size(ftb_path_t path);
+
+/* For ftb_file_remove function
+ *   -dep -> Operating System.
+ *   path -> The path which is pointing to the file to remove.
+ *   ret bool -> If 'path' is null it return false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_file_remove(ftb_path_t path);
+
+/* For ftb_file_exists function
+ *   -dep -> Operating System.
+ *   path -> The path which is pointing to the file to check.
+ *   ret bool -> If 'path' is null it return false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_file_exists(ftb_path_t path);
+
+/* For ftb_file_copy function
+ *   from -> The file's path which is wanted to be copied.
+ *   to -> The path to end address.
+ *   ret bool -> If 'from' or 'to' null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_file_copy(ftb_path_t from,ftb_path_t to);
+
+/* For ftb_file_mtime function
+ *   -dep -> Operating System.
+ *   path -> The path to file which will be taken its last modification time.
+ *   ret bool -> if 'path' is null or in failure it returns -1.Otherwise
+ */
+FTBDEF i64 ftb_file_mtime(ftb_path_t path);
+
+/* For ftb_dir_remove function
+ *   -dep -> Operating System.
+ *   path -> The path to directory which will removed it can contain other things.
+ *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_dir_remove(ftb_path_t path);
+
+/* For ftb_dir_exists function
+ *   -dep -> Operating System.
+ *   path -> The path to directory.
+ *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_dir_exists(ftb_path_t path);
+
+/* For ftb_dir_mkdir function
+ *   -dep -> Operating System.
+ *   path -> The path to directory which is will be created.
+ *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_dir_mkdir(ftb_path_t path);
+
+/* For ftb_dir_mkdir_ifnot_exists function
+ *   -dep -> Operating System.
+ *   path -> The path to directory which is will be created if it does not exists.
+ *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_dir_mkdir_ifnot_exists(ftb_path_t path);
+
+/* For ftb_dir_is_dir function
+ *   -dep -> Operating System.
+ *   path -> The path to directory which is will checked.
+ *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_dir_is_dir(ftb_path_t path);
+
+/* For ftb_file_is_file function
+ *   -dep -> Operating System.
+ *   path -> The path to file which is will checked.
+ *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_file_is_file(ftb_path_t path);
+
+/* For ftb_dir_list_dir function
+ *   -dep -> Operating System.
+ *   path -> The path to directory which is will be iterated with the 'callback'.
+ *   callback -> A function pointer which will be called every iteration
+ *   arg -> A void* to argumant which will be given by the user and it will be passed to callback.
+ *       -> If callback does not use arg it can be null.
+ *   ret bool -> if 'path' or 'callback' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_dir_list_dir
+(ftb_path_t path, void (*callback)(const char*,bool,void*), void* arg);
+
+/* For ftb_file_write_n function
+ *   path -> The path to the file which will be written.
+ *   data -> An array for the data.Does not need to be null terminated.
+ *   size -> The amount of bytes will be written to the file.
+ *   ret bool -> If 'path' or 'data' is null or if file could not created or written
+ *            -> it will return false.Otherwise it returns true (including size can be 0).
+ */
+FTBDEF bool ftb_file_write_n
+(ftb_path_t path,const void* data, size_t size);
+
+/* For ftb_file_write function
+ *   path -> The path to the file which will be written.
+ *   data -> The da list.For size it will use (da's count * da's elsize).
+ *   ret bool -> If 'path' or 'data' is null or if file could not created or written
+ *            -> it will return false.For successful operations it will return true.
+ */
+ALLFTBDEF bool ftb_file_write
+(ftb_path_t path, const void* data)
+{ return ftb_file_write_n(path,data,ftb_da_count(data)*ftb_da_elsize(data)); }
+
+/* For ftb_file_write_cstr function
+ *   path -> The path to the file which will be written.
+ *   data -> The pointer to c-str.It needs to be null terminated.Size calculated with strlen.
+ *   ret bool -> If 'path' or 'data' is null or if file could not created or written
+ *            -> it will return false.For successful operations it will return true.
+ */
+ALLFTBDEF bool ftb_file_write_cstr
+(ftb_path_t path, const char* data)
+{ return ftb_file_write_n(path,data,strlen(data)); }
 
 #endif /* FTB_H_ */
 
@@ -786,6 +937,7 @@ FTBDEF bool __ftb_log
     buf[index++] = '\n';
     buf[index++] = '\0';
     i32 err = vfprintf(ctx->logger.log_file,buf,ap);
+    fflush(ctx->logger.log_file);
     if(len >= FTB_KB(10)) { FTB_FREE(buf); }
     return (err < 0) ? false : true;
 }
@@ -899,6 +1051,288 @@ FTBDEF bool ftb_log_set_log_level
         return true;
     }
     return false;
+}
+
+FTBDEF ftb_path_t ftb_path_make_from_cstr
+(ftb_ctx_t* ctx,const char* str)
+{
+    ftb_path_t path = 0;
+    u32 count = strlen(str);
+    ftb_da_appends(ctx,path,str,count);
+    ftb_da_set_count(path,count);
+    return path;
+}
+
+static char* __ftb_tmp_safe_path
+(const ftb_path_t path)
+{
+    // Todo: trim left and right
+    char* tmp = 0;
+    u32 count = ftb_da_count(path);
+    tmp = malloc(count + 2);
+    assert(tmp);
+    memcpy(tmp,path,count);
+    tmp[count] = 0;
+    /* For windows */
+    tmp[count + 1] = 0;
+    return tmp;
+}
+
+#define __ftb_ret_free(tmp,cond) \
+do { bool ok = (cond);free((tmp)); return ok;} while(0)
+
+FTBDEF bool ftb_file_exists
+(const ftb_path_t path)
+{
+    ftb_error_ret(!path, false);
+    char* tmp = __ftb_tmp_safe_path(path);
+    #ifdef _WIN32
+    DWORD attr = GetFileAttributesA(path);
+    __ftb_ret_free(tmp,(attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)));
+    #else
+    __ftb_ret_free(tmp,access(tmp,F_OK)==0);
+    #endif
+}
+
+FTBDEF bool ftb_file_copy
+(const ftb_path_t from,const ftb_path_t to)
+{
+    ftb_error_ret((!from || !to), false);
+    bool ok = true;
+    ftb_scoped_ctx {
+        ftb_bytes_t data = ftb_file_read(pctx,from);
+        if(!data) {ok = false;break;}
+        ok = ftb_file_write(to,data);
+    }
+    return ok;
+}
+
+FTBDEF bool ftb_dir_exists
+(const ftb_path_t path)
+{
+    ftb_error_ret(!path, false);
+    char* tmp = __ftb_tmp_safe_path(path);
+    #ifdef _WIN32
+    DWORD attr = GetFileAttributesA(tmp);
+    __ftb_ret_free(tmp,(attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)));
+    #else
+    struct stat s;
+    __ftb_ret_free(tmp,(stat(tmp,&s)==0 && S_ISDIR(s.st_mode)));
+    #endif
+}
+
+FTBDEF bool ftb_dir_mkdir
+(const ftb_path_t path)
+{
+    ftb_error_ret(!path, false);
+    char* tmp = __ftb_tmp_safe_path(path);
+    #ifdef _WIN32
+    __ftb_ret_free(tmp,(_mkdir(tmp)==0 || errno==EEXIST));
+    #else
+    __ftb_ret_free(tmp,(mkdir(tmp,0755)==0 || errno==EEXIST));
+    #endif
+}
+
+FTBDEF bool ftb_dir_mkdir_ifnot_exists
+(const ftb_path_t path)
+{
+    ftb_error_ret(!path, false);
+    if(!ftb_dir_exists(path)) {
+        bool ok = ftb_dir_mkdir(path);
+        return ok;
+    }
+    return true;
+}
+
+FTBDEF bool ftb_file_remove
+(const ftb_path_t path)
+{
+    ftb_error_ret(!path, false);
+    char* tmp = __ftb_tmp_safe_path(path);
+    #ifdef _WIN32
+    __ftb_ret_free(tmp,DeleteFileA(tmp));
+    #else
+    __ftb_ret_free(tmp,unlink(tmp)==0);
+    #endif
+}
+
+FTBDEF i64 ftb_file_size(const ftb_path_t path)
+{
+    ftb_error_ret(!path, -1);
+    char* tmp = __ftb_tmp_safe_path(path);
+    i64 size = -1;
+#if _WIN32
+    struct __stat64 st;
+    if (_stat64(tmp, &st) == 0) {
+        size = (i64)st.st_size;
+    }
+#else
+    struct stat st;
+    if (stat(tmp, &st) == 0) {
+        size = (i64)st.st_size;
+    }
+#endif
+    free(tmp);
+    return size;
+}
+
+FTBDEF ftb_bytes_t ftb_file_read
+(ftb_ctx_t* ctx,const ftb_path_t path)
+{
+    ftb_error_ret((!ctx || !path), 0);
+    ftb_bytes_t bytes = 0;
+    char* tmp = __ftb_tmp_safe_path(path);
+    FILE* fptr = fopen(tmp,"rb");
+    free(tmp);
+    if(!fptr) {return 0;}
+    fseek(fptr,0,SEEK_END);
+    i64 size=ftell(fptr);
+    rewind(fptr);
+    if(size == -1) {
+        fclose(fptr);
+        return 0;
+    }
+    ftb_da_reserve(ctx,bytes,size);
+    ftb_da_set_count(bytes,size);
+    ftb_da_set_elsize(bytes,sizeof(u8));
+    if(fread(bytes,size,sizeof(u8),fptr) != 1) {
+        bytes = 0;
+    }
+    fclose(fptr);
+    return bytes;
+}
+
+#ifndef _WIN32
+FTBDEF int __ftb_dir_remove_unlink_cb
+(const char *fpath,const struct stat *sb,int typeflag,struct FTW *ftwbuf)
+{
+    int rv = remove(fpath);
+    if (rv) perror(fpath);
+    return rv;
+}
+#endif
+
+FTBDEF bool ftb_dir_remove
+(const ftb_path_t path)
+{
+    ftb_error_ret(!path,false);
+    char* tmp = __ftb_tmp_safe_path(path);
+#ifdef _WIN32
+    SHFILEOPSTRUCTA file_op = {
+        NULL,
+        FO_DELETE,
+        NULL,
+        NULL,
+        FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT,
+        FALSE,
+        NULL,
+        NULL
+    };
+
+    file_op.pFrom = tmp;
+    __ftb_ret_free(tmp,(SHFileOperationA(&file_op) == 0));
+#else
+    __ftb_ret_free(tmp,nftw(path,__ftb_dir_remove_unlink_cb, 64, FTW_DEPTH | FTW_PHYS) == 0);
+#endif
+}
+
+FTBDEF i64 ftb_file_mtime
+(const ftb_path_t path)
+{
+    ftb_error_ret(!path, -1);
+    char* tmp = __ftb_tmp_safe_path(path);
+#ifdef _WIN32
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if(!GetFileAttributesExA(tmp,GetFileExInfoStandard,&data))
+    { free(tmp); return -1;}
+    ULARGE_INTEGER t;
+    t.LowPart=data.ftLastWriteTime.dwLowDateTime;
+    t.HighPart=data.ftLastWriteTime.dwHighDateTime;
+    free(tmp);
+    return (i64)(t.QuadPart/10000ULL);
+#else
+    struct stat s;
+    if(stat(tmp,&s)<0) { free(tmp);return -1;}
+    free(tmp);
+    return (i64)s.st_mtime*1000;
+#endif
+}
+
+FTBDEF bool ftb_file_write_n
+(const ftb_path_t path,const void* data,size_t size)
+{
+    ftb_error_ret((!path || !data),false);
+    char* tmp = __ftb_tmp_safe_path(path);
+    FILE* fptr = fopen(path,"wb");
+    free(tmp);
+    if(!fptr) {return false;}
+    if(size) {
+        if(fwrite(data,size,1,fptr) != 1) {
+            fclose(fptr);
+            return false;
+        }
+    }
+    fclose(fptr);
+    return true;
+}
+
+FTBDEF bool ftb_dir_list_dir
+(ftb_path_t path,void (*callback)(const char*,bool,void*),void* arg)
+{
+    ftb_error_ret((!path || !callback),false);
+    char* tmp = __ftb_tmp_safe_path(path);
+#ifdef _WIN32
+    char search[512];
+    snprintf(search,512,"%s\\*",tmp);
+    free(tmp);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(search,&fd);
+    if(h == INVALID_HANDLE_VALUE) {return false;}
+    do {
+        if(strcmp(fd.cFileName,".") && strcmp(fd.cFileName,".."))
+        {callback(fd.cFileName,(fd.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0,arg);}
+    } while(FindNextFileA(h,&fd));
+    FindClose(h);
+#else
+    DIR* d = opendir(tmp);
+    free(tmp);
+    if(!d) {return false;}
+    struct dirent* e;
+    while((e=readdir(d))) {
+        if(strcmp(e->d_name,".") && strcmp(e->d_name,".."))
+        {callback(e->d_name,(e->d_type==DT_DIR),arg);}
+    }
+    closedir(d);
+#endif
+    return true;
+}
+
+FTBDEF bool ftb_path_is_file
+(ftb_path_t path)
+{
+    ftb_error_ret(!path,false);
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path);
+    return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    bool is_f = (stat(path, &st) == 0 && S_ISREG(st.st_mode));
+    return is_f;
+#endif
+}
+
+FTBDEF bool ftb_path_is_dir
+(ftb_path_t path)
+{
+    ftb_error_ret(!path,false);
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path);
+    return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    bool is_d = (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+    return is_d;
+#endif
 }
 
 #endif /* FTB_FIRST_IMPLEMENTATION */
