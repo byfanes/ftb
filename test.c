@@ -154,7 +154,7 @@ bool test_logger(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t log_file = ftb_path_make_from_cstr(&ctx,"test_ftb_log.txt");
     ftb_da_add_shadow_null(&ctx,log_file);
-    ftb_test_assert(ftb_log_set_log_file_path(&ctx, log_file), "Set log file path");
+    ftb_test_assert(ftb_log_set_log_file_path(&ctx, (char*)log_file), "Set log file path");
 
     ftb_log_set_log_level(&ctx, ftb_log_level_info);
     ftb_test_assert(ftb_log_info(&ctx, "This is an info log"), "Log info");
@@ -521,7 +521,7 @@ bool test_time_resolution(void) {
 int main(void)
 {
     ftb_test_t* tests = 0;
-
+    
     /* --- Memory Tests --- */
     ftb_test_add(tests, test_memory_alloc_and_free);
     ftb_test_add(tests, test_mem_free_direct);

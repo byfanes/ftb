@@ -173,36 +173,38 @@ typedef uintptr_t   usize;
  *   ctx -> can be a pointer to context or be null for raw allocation
  *   da -> can be a null pointer or existing da pointer
  */
-#define ftb_da_reserve(ctx,da,amount)                                                     \
-    do {                                                                                  \
-        ftb_ptr_header_t* header = 0;                                                     \
-        if((da) == NULL) {                                                                \
-            usize da_s = (amount > FTB_DA_INIT_CAPACITY) ? amount : FTB_DA_INIT_CAPACITY; \
-            da_s *= sizeof(*(da));                                                        \
-            if((ctx) == FTB_RAW)                                                          \
-            {                                                                             \
-                header = FTB_CALLOC(1, da_s + sizeof(ftb_ptr_header_t));                  \
-                (da) = (void*)(header + 1);                                               \
-                header->addr = -1;                                                        \
-            }                                                                             \
-            else                                                                          \
-            { (da) = ftb_mem_zalloc((ctx),da_s); header = ftb_da_header((da)); }          \
-            ftb_da_set_count(da,0);                                                       \
-            ftb_da_set_capacity(da,da_s);                                                 \
-            ftb_da_set_elsize(da,sizeof(*(da)));                                          \
-        } else {                                                                          \
-            usize da_s = ftb_da_capacity((da)) + amount*sizeof(*(da));                    \
-            header = ftb_da_header((da));                                                 \
-            if((ctx) == FTB_RAW) {                                                        \
-                u32 count = ftb_da_count((da)), cap = ftb_da_capacity((da));              \
-                header = FTB_REALLOC(header,da_s + sizeof(ftb_ptr_header_t));             \
-                memset(header + sizeof(ftb_ptr_header_t) + cap,0, amount*sizeof(*(da)));  \
-                header->elsize = sizeof(*(da));                                           \
-                header->capacity = da_s;                                                  \
-                header->count = ftb_da_count((da));                                       \
-                (da) = (void*)(header + 1);                                               \
-            } else { (da) = ftb_mem_realloc((ctx),(da),da_s); }                           \
-        }                                                                                 \
+#define ftb_da_reserve(ctx,da,amount)                                            \
+    do {                                                                         \
+        ftb_ptr_header_t* header = 0;                                            \
+        if((da) == NULL) {                                                       \
+            usize da_s = (amount > FTB_DA_INIT_CAPACITY)                         \
+            ? amount : FTB_DA_INIT_CAPACITY;                                     \
+            da_s *= sizeof(*(da));                                               \
+            if((ctx) == FTB_RAW)                                                 \
+            {                                                                    \
+                header = FTB_CALLOC(1, da_s + sizeof(ftb_ptr_header_t));         \
+                (da) = (void*)(header + 1);                                      \
+                header->addr = -1;                                               \
+            }                                                                    \
+            else                                                                 \
+            { (da) = ftb_mem_zalloc((ctx),da_s); header = ftb_da_header((da)); } \
+            ftb_da_set_count(da,0);                                              \
+            ftb_da_set_capacity(da,da_s);                                        \
+            ftb_da_set_elsize(da,sizeof(*(da)));                                 \
+        } else {                                                                 \
+            usize da_s = ftb_da_capacity((da)) + amount*sizeof(*(da));           \
+            header = ftb_da_header((da));                                        \
+            if((ctx) == FTB_RAW) {                                               \
+                u32 count = ftb_da_count((da)), cap = ftb_da_capacity((da));     \
+                header = FTB_REALLOC(header,da_s + sizeof(ftb_ptr_header_t));    \
+                memset((u8*)header + sizeof(ftb_ptr_header_t) + cap,             \
+                0, amount*sizeof(*(da)));                                        \
+                header->elsize = sizeof(*(da));                                  \
+                header->capacity = da_s;                                         \
+                header->count = count;                                           \
+                (da) = (void*)(header + 1);                                      \
+            } else { (da) = ftb_mem_realloc((ctx),(da),da_s); }                  \
+        }                                                                        \
     } while(0)
 
 /* For ftb_da_append ftb_da_appends macro
@@ -216,10 +218,12 @@ typedef uintptr_t   usize;
     do {                                                    \
         if((da) == NULL)                                    \
         {ftb_da_reserve((ctx),(da),FTB_DA_INIT_CAPACITY);}  \
-        if(ftb_da_max_count((da)) <= ftb_da_count((da)) + 1)\
-        {ftb_da_reserve((ctx),(da),1);}                     \
+        else{                                               \
+            if(ftb_da_max_count((da)) < ftb_da_count((da)) + 1) \
+            {ftb_da_reserve((ctx),(da),FTB_DA_INIT_CAPACITY);}  \
+        }                                                   \
         (da)[ftb_da_count(da)] = (item);                    \
-        ftb_da_header((da))->count++;                       \
+        ftb_da_count_inc((da));                             \
     } while(0)
 
 #define ftb_da_appends(ctx,da,items,items_count)                                     \
@@ -564,6 +568,20 @@ typedef u8* ftb_path_t;
 
 FTBDEF ftb_path_t ftb_path_make_from_cstr(ftb_ctx_t* ctx,const char* str);
 
+/* For ftb_path_is_dir function
+ *   -dep -> Operating System.
+ *   path -> The path to directory which is will checked.
+ *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_path_is_dir(ftb_path_t path);
+
+/* For ftb_path_is_file function
+ *   -dep -> Operating System.
+ *   path -> The path to file which is will checked.
+ *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
+ */
+FTBDEF bool ftb_path_is_file(ftb_path_t path);
+
 /* For ftb_file_read function
  *   ctx -> Pointing to the context.
  *   path -> The path which is pointing to the file to read.
@@ -635,20 +653,6 @@ FTBDEF bool ftb_dir_mkdir(ftb_path_t path);
  */
 FTBDEF bool ftb_dir_mkdir_ifnot_exists(ftb_path_t path);
 
-/* For ftb_dir_is_dir function
- *   -dep -> Operating System.
- *   path -> The path to directory which is will checked.
- *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
- */
-FTBDEF bool ftb_dir_is_dir(ftb_path_t path);
-
-/* For ftb_file_is_file function
- *   -dep -> Operating System.
- *   path -> The path to file which is will checked.
- *   ret bool -> if 'path' is null it returns false.Otherwise it returns its status.
- */
-FTBDEF bool ftb_file_is_file(ftb_path_t path);
-
 /* For ftb_dir_list_dir function
  *   -dep -> Operating System.
  *   path -> The path to directory which is will be iterated with the 'callback'.
@@ -700,7 +704,7 @@ FTBDEF void ftb_mem_free
 (ftb_ctx_t* ctx,void* ptr)
 {
     if(!ptr) return;
-    u32 addr = ftb_da_addr(ptr);
+    i32 addr = ftb_da_addr(ptr);
     free(ftb_da_header(ptr));
     if(addr == -1) return;
     assert(ctx);
@@ -1206,6 +1210,9 @@ FTBDEF ftb_bytes_t ftb_file_read
 FTBDEF int __ftb_dir_remove_unlink_cb
 (const char *fpath,const struct stat *sb,int typeflag,struct FTW *ftwbuf)
 {
+    FTB_UNUSED(sb);
+    FTB_UNUSED(typeflag);
+    FTB_UNUSED(ftwbuf);
     int rv = remove(fpath);
     if (rv) perror(fpath);
     return rv;
@@ -1232,7 +1239,7 @@ FTBDEF bool ftb_dir_remove
     file_op.pFrom = tmp;
     __ftb_ret_free(tmp,(SHFileOperationA(&file_op) == 0));
 #else
-    __ftb_ret_free(tmp,nftw(path,__ftb_dir_remove_unlink_cb, 64, FTW_DEPTH | FTW_PHYS) == 0);
+    __ftb_ret_free(tmp,nftw(tmp,__ftb_dir_remove_unlink_cb, 64, FTW_DEPTH | FTW_PHYS) == 0);
 #endif
 }
 
@@ -1263,7 +1270,7 @@ FTBDEF bool ftb_file_write_n
 {
     ftb_error_ret((!path || !data),false);
     char* tmp = __ftb_tmp_safe_path(path);
-    FILE* fptr = fopen(path,"wb");
+    FILE* fptr = fopen(tmp,"wb");
     free(tmp);
     if(!fptr) {return false;}
     if(size) {
@@ -1311,13 +1318,13 @@ FTBDEF bool ftb_path_is_file
 (ftb_path_t path)
 {
     ftb_error_ret(!path,false);
+    char* tmp = __ftb_tmp_safe_path(path);
 #ifdef _WIN32
-    DWORD attrs = GetFileAttributesA(path);
-    return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
+    DWORD attrs = GetFileAttributesA(tmp);
+    __ftb_ret_free(tmp,(attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)));
 #else
     struct stat st;
-    bool is_f = (stat(path, &st) == 0 && S_ISREG(st.st_mode));
-    return is_f;
+    __ftb_ret_free(tmp,(stat(tmp, &st) == 0 && S_ISREG(st.st_mode)));
 #endif
 }
 
@@ -1325,13 +1332,13 @@ FTBDEF bool ftb_path_is_dir
 (ftb_path_t path)
 {
     ftb_error_ret(!path,false);
+    char* tmp = __ftb_tmp_safe_path(path);
 #ifdef _WIN32
-    DWORD attrs = GetFileAttributesA(path);
-    return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY));
+    DWORD attrs = GetFileAttributesA(tmo);
+    __ftb_ret_free(tmp,(attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)));
 #else
     struct stat st;
-    bool is_d = (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
-    return is_d;
+    __ftb_ret_free(tmp,(stat(tmp, &st) == 0 && S_ISDIR(st.st_mode)));
 #endif
 }
 
