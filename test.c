@@ -152,7 +152,8 @@ bool test_memory_zalloc_large(void) {
 
 bool test_logger(void) {
     ftb_ctx_t ctx = {0};
-    ftb_path_t log_file = ftb_path_make_from_cstr(&ctx,"test_ftb_log.txt");
+    ftb_path_t log_file = 0;
+    ftb_da_append_cstr(&ctx,log_file,"test_ftb_log.txt");
     ftb_da_add_shadow_null(&ctx,log_file);
     ftb_test_assert(ftb_log_set_log_file_path(&ctx, (char*)log_file), "Set log file path");
 
@@ -209,7 +210,8 @@ bool test_scoped_ctx(void) {
 
 bool test_file_io(void) {
     ftb_ctx_t ctx = {0};
-    ftb_path_t test_file = ftb_path_make_from_cstr(&ctx,"test_ftb_io.txt");
+    ftb_path_t test_file = 0;
+    ftb_da_append_cstr(&ctx,test_file,"test_ftb_io.txt");
     const char* content = "Hello File IO";
 
     ftb_file_remove(test_file);
@@ -235,8 +237,10 @@ bool test_file_io(void) {
 
 bool test_file_copy_and_mtime(void) {
     ftb_ctx_t ctx = {0};
-    ftb_path_t src = ftb_path_make_from_cstr(&ctx,"test_src.txt");
-    ftb_path_t dst = ftb_path_make_from_cstr(&ctx,"test_dst.txt");
+    ftb_path_t src = 0;
+    ftb_path_t dst = 0;
+    ftb_da_append_cstr(&ctx,dst,"test_dst.txt");
+    ftb_da_append_cstr(&ctx,src,"test_src.txt");
 
     ftb_file_write_cstr(src, "copy me");
 
@@ -258,7 +262,7 @@ bool test_file_copy_and_mtime(void) {
 bool test_dir_operations(void) {
     ftb_path_t test_dir = 0;
     ftb_scoped_ctx {
-        test_dir = ftb_path_make_from_cstr(pctx,"test_ftb_dir");
+        ftb_da_append_cstr(pctx,test_dir,"test_ftb_dir");
         ftb_dir_remove(test_dir);
 
         ftb_test_assert(!ftb_dir_exists(test_dir), "Dir should not exist initially");
@@ -285,9 +289,9 @@ bool test_dir_list(void) {
     ftb_path_t test_file1 = 0;
     ftb_path_t test_file2 = 0;
     ftb_scoped_ctx {
-        test_dir = ftb_path_make_from_cstr(pctx,"test_ftb_list_dir");
-        test_file1 = ftb_path_make_from_cstr(pctx,"test_ftb_list_dir" PSEP "f1.txt");
-        test_file2 = ftb_path_make_from_cstr(pctx,"test_ftb_list_dir" PSEP "f2.txt");
+        ftb_da_append_cstr(pctx,test_dir,"test_ftb_list_dir");
+        ftb_da_append_cstr(pctx,test_file1,"test_ftb_list_dir" PSEP "f1.txt");
+        ftb_da_append_cstr(pctx,test_file2,"test_ftb_list_dir" PSEP "f2.txt");
         ftb_dir_mkdir(test_dir);
 
         ftb_file_write_cstr(test_file1, "1");

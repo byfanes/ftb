@@ -662,12 +662,6 @@ FTBDEF i64 ftb_str_get_char_count(const ftb_str_t str);
  */
 FTBDEF i64 ftb_str_get_char_count_fast(const ftb_str_t str);
 
-/* For ftb_path_make_from_cstr function
- *   path -> The path which will be copied and turn to 'ftb_path_t' type.
- *   ret ftb_path_t -> Returns a 'ftb_path_t' does not fail.
- */
-FTBDEF ftb_path_t ftb_path_make_from_cstr(ftb_ctx_t* ctx,const char* str);
-
 /* For ftb_path_is_dir function
  *   -dep -> Operating System.
  *   path -> The path to directory which is will checked.
@@ -1511,39 +1505,24 @@ FTBDEF bool ftb_str_cmp_cstr
     return memcmp(str,cstr,c1) == 0;
 }
 
-FTBDEF ftb_path_t ftb_path_make_from_cstr
-(ftb_ctx_t* ctx,const char* str)
-{
-    ftb_path_t path = 0;
-    u32 count = strlen(str);
-    ftb_da_appends(ctx,path,str,count);
-    ftb_da_set_count(path,count);
-    return path;
-}
-
-static char* __ftb_tmp_safe_path
+static ftb_str_t __ftb_tmp_safe_path
 (const ftb_path_t path)
 {
-    // Todo: trim left and right
-    char* tmp = 0;
-    u32 count = ftb_da_count(path);
-    tmp = malloc(count + 2);
+    ftb_str_t tmp = ftb_str_trim(FTB_RAW,path);
     assert(tmp);
-    memcpy(tmp,path,count);
-    tmp[count] = 0;
-    /* For windows */
-    tmp[count + 1] = 0;
+    char buf[2] = {0};
+    ftb_da_appends(FTB_RAW,tmp,buf,sizeof(buf));
     return tmp;
 }
 
 #define __ftb_ret_free(tmp,cond) \
-do { bool ok = (cond);free((tmp)); return ok;} while(0)
+do { bool ok = (cond);ftb_mem_free(FTB_RAW,(tmp)); return ok;} while(0)
 
 FTBDEF bool ftb_file_exists
 (const ftb_path_t path)
 {
     ftb_error_ret(!path, false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     DWORD attr = GetFileAttributesA(path);
     __ftb_ret_free(tmp,(attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)));
@@ -1569,7 +1548,7 @@ FTBDEF bool ftb_dir_exists
 (const ftb_path_t path)
 {
     ftb_error_ret(!path, false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     DWORD attr = GetFileAttributesA(tmp);
     __ftb_ret_free(tmp,(attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)));
@@ -1583,7 +1562,7 @@ FTBDEF bool ftb_dir_mkdir
 (const ftb_path_t path)
 {
     ftb_error_ret(!path, false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     __ftb_ret_free(tmp,(_mkdir(tmp)==0 || errno==EEXIST));
 #else
@@ -1606,7 +1585,7 @@ FTBDEF bool ftb_file_remove
 (const ftb_path_t path)
 {
     ftb_error_ret(!path, false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     __ftb_ret_free(tmp,DeleteFileA(tmp));
 #else
@@ -1617,7 +1596,7 @@ FTBDEF bool ftb_file_remove
 FTBDEF i64 ftb_file_size(const ftb_path_t path)
 {
     ftb_error_ret(!path, -1);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
     i64 size = -1;
 #if _WIN32
     struct __stat64 st;
@@ -1630,7 +1609,7 @@ FTBDEF i64 ftb_file_size(const ftb_path_t path)
         size = (i64)st.st_size;
     }
 #endif
-    free(tmp);
+    ftb_mem_free(FTB_RAW,tmp);
     return size;
 }
 
@@ -1639,9 +1618,9 @@ FTBDEF ftb_bytes_t ftb_file_read
 {
     ftb_error_ret((!ctx || !path), 0);
     ftb_bytes_t bytes = 0;
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
     FILE* fptr = fopen(tmp,"rb");
-    free(tmp);
+    ftb_mem_free(FTB_RAW,tmp);
     if(!fptr) {return 0;}
     fseek(fptr,0,SEEK_END);
     i64 size=ftell(fptr);
@@ -1677,7 +1656,7 @@ FTBDEF bool ftb_dir_remove
 (const ftb_path_t path)
 {
     ftb_error_ret(!path,false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     SHFILEOPSTRUCTA file_op = {
         NULL,
@@ -1700,20 +1679,20 @@ FTBDEF i64 ftb_file_mtime
 (const ftb_path_t path)
 {
     ftb_error_ret(!path, -1);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     WIN32_FILE_ATTRIBUTE_DATA data;
     if(!GetFileAttributesExA(tmp,GetFileExInfoStandard,&data))
-    { free(tmp); return -1;}
+    { ftb_mem_free(FTB_RAW,tmp); return -1;}
     ULARGE_INTEGER t;
     t.LowPart=data.ftLastWriteTime.dwLowDateTime;
     t.HighPart=data.ftLastWriteTime.dwHighDateTime;
-    free(tmp);
+    ftb_mem_free(FTB_RAW,tmp);
     return (i64)(t.QuadPart/10000ULL);
 #else
     struct stat s;
-    if(stat(tmp,&s)<0) { free(tmp);return -1;}
-    free(tmp);
+    if(stat(tmp,&s)<0) { ftb_mem_free(FTB_RAW,tmp);return -1;}
+    ftb_mem_free(FTB_RAW,tmp);
     return (i64)s.st_mtime*1000;
 #endif
 }
@@ -1722,9 +1701,9 @@ FTBDEF bool ftb_file_write_n
 (const ftb_path_t path,const void* data,size_t size)
 {
     ftb_error_ret((!path || !data),false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
     FILE* fptr = fopen(tmp,"wb");
-    free(tmp);
+    ftb_mem_free(FTB_RAW,tmp);
     if(!fptr) {return false;}
     if(size) {
         if(fwrite(data,size,1,fptr) != 1) {
@@ -1740,11 +1719,11 @@ FTBDEF bool ftb_dir_list_dir
 (ftb_path_t path,void (*callback)(const char*,bool,void*),void* arg)
 {
     ftb_error_ret((!path || !callback),false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     char search[512];
     snprintf(search,512,"%s\\*",tmp);
-    free(tmp);
+    ftb_mem_free(FTB_RAW,tmp);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(search,&fd);
     if(h == INVALID_HANDLE_VALUE) {return false;}
@@ -1755,7 +1734,7 @@ FTBDEF bool ftb_dir_list_dir
     FindClose(h);
 #else
     DIR* d = opendir(tmp);
-    free(tmp);
+    ftb_mem_free(FTB_RAW,tmp);
     if(!d) {return false;}
     struct dirent* e;
     while((e=readdir(d))) {
@@ -1771,7 +1750,7 @@ FTBDEF bool ftb_path_is_file
 (ftb_path_t path)
 {
     ftb_error_ret(!path,false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     DWORD attrs = GetFileAttributesA(tmp);
     __ftb_ret_free(tmp,(attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)));
@@ -1785,7 +1764,7 @@ FTBDEF bool ftb_path_is_dir
 (ftb_path_t path)
 {
     ftb_error_ret(!path,false);
-    char* tmp = __ftb_tmp_safe_path(path);
+    char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     DWORD attrs = GetFileAttributesA(tmo);
     __ftb_ret_free(tmp,(attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)));
