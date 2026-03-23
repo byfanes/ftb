@@ -578,6 +578,37 @@ typedef u8* ftb_path_t;
  */
 typedef u8* ftb_str_t;
 
+/* For ftb_str_lowercase function
+ *   str1 -> First str.Can be null.
+ *   str2 -> Second str.Can be null.
+ *   ret ftb_str_t -> Returns a true if both or same (in memory layout) or null.Otherwise false.
+ */
+FTBDEF bool ftb_str_cmp(const ftb_str_t str1,const ftb_str_t str2);
+
+/* For ftb_str_lowercase function
+ *   -dep -> May not contains some sequences.They should be implemented.
+ *   ctx -> Pointing to the context.
+ *   str -> A str which will be use in construction of the new str with trimmed only left.
+ *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str.
+ */
+FTBDEF ftb_str_t ftb_str_trim_left(ftb_ctx_t* ctx,const ftb_str_t src);
+
+/* For ftb_str_lowercase function
+ *   -dep -> May not contains some sequences.They should be implemented.
+ *   ctx -> Pointing to the context.
+ *   str -> A str which will be use in construction of the new str with trimmed only right.
+ *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str.
+ */
+FTBDEF ftb_str_t ftb_str_trim_right(ftb_ctx_t* ctx,const ftb_str_t src);
+
+/* For ftb_str_lowercase function
+ *   -dep -> May not contains some sequences.They should be implemented.
+ *   ctx -> Pointing to the context.
+ *   str -> A str which will be use in construction of the new str with trimmed both sides.
+ *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str.
+ */
+FTBDEF ftb_str_t ftb_str_trim(ftb_ctx_t* ctx,const ftb_str_t src);
+
 /* For ftb_str_to_cstr function
  *   str -> A str which will be copied and append null terminator.
  *   ret bool -> Returns "\0" for null strs.Otherwise data + '\0'.
@@ -767,7 +798,9 @@ FTBDEF void ftb_mem_free
 {
     if(!ptr) return;
     i32 addr = ftb_da_addr(ptr);
-    free(ftb_da_header(ptr));
+    ftb_ptr_header_t* header = ftb_da_header(ptr);
+    FTB_ZERO(*header);
+    free(header);
     if(addr == -1) return;
     assert(ctx);
     assert(ctx->ptrs.items);
@@ -1152,6 +1185,114 @@ static inline u32 __ftb_str_utf8_char_len
     return 0;
 }
 
+static inline bool __ftb_utf8_is_space(const u8* str, u32 char_len)
+{
+    if (char_len == 1) {
+        u8 c = str[0];
+        /* Standard ASCII space (0x20) or control spaces (\t, \n, \v, \f, \r) */
+        return c == 0x20 || (c >= 0x09 && c <= 0x0D);
+    }
+    else if (char_len == 2) {
+        /* NBSP (Non-Breaking Space) or NEL (Next Line) */
+        if (str[0] == 0xC2)
+        { return str[1] == 0xA0 || str[1] == 0x85; }
+    }
+    else if (char_len == 3) {
+        /* Most Unicode spaces start with 0xE2 0x80 */
+        if (str[0] == 0xE2) {
+            if (str[1] == 0x80) {
+                /* U+2000 to U+200A (En quad, Em quad, Hair space, etc.) */
+                if (str[2] >= 0x80 && str[2] <= 0x8A) return true;
+                /* U+2028 (Line Sep), U+2029 (Paragraph Sep) */
+                if (str[2] == 0xA8 || str[2] == 0xA9) return true;
+                /* U+202F (Narrow No-Break Space) */
+                if (str[2] == 0xAF) return true;
+            }
+            else if (str[1] == 0x81 && str[2] == 0x9F)
+            { return true; } /* U+205F (Medium Mathematical Space) */
+        }
+        else if (str[0] == 0xE3 && str[1] == 0x80 && str[2] == 0x80)
+        { return true; } /* U+3000 (Ideographic Space - Fullwidth CJK space) */
+        else if (str[0] == 0xE1 && str[1] == 0x9A && str[2] == 0x80)
+        { return true; } /* U+1680 (Ogham Space Mark) */
+    }
+    /* Note: Unicode currently has no 4-byte whitespace characters. */
+    return false;
+}
+
+static inline bool __ftb_str_trim_bounds
+(const ftb_str_t str, u32* out_start, u32* out_end)
+{
+    u32 count = ftb_da_count(str);
+    u32 start = 0;
+    u32 end = 0;
+    bool found_first_char = false;
+    for(u32 i = 0; i < count;) {
+        u32 len = __ftb_str_utf8_char_len(str + i, count - i);
+        if(len == 0) return false;
+        bool is_space = __ftb_utf8_is_space(str + i, len);
+        if(!is_space) {
+            if(!found_first_char) {
+                start = i;
+                found_first_char = true;
+            }
+            end = i + len;
+        }
+        i += len;
+    }
+    if(!found_first_char) {
+        *out_start = 0;
+        *out_end = 0;
+    } else {
+        *out_start = start;
+        *out_end = end;
+    }
+    return true;
+}
+
+FTBDEF ftb_str_t ftb_str_trim_left
+(ftb_ctx_t* ctx,const ftb_str_t src)
+{
+    ftb_error_ret(!src, NULL);
+    u32 start, end;
+    ftb_str_t trimmed = NULL;
+    if(!__ftb_str_trim_bounds(src, &start, &end)) return 0;
+    u32 count = ftb_da_count(src);
+    if (count > start) {
+        for(u32 i = start;i < count;++i)
+             ftb_da_append(ctx,trimmed, src[i]);
+    }
+    return trimmed;
+}
+
+FTBDEF ftb_str_t ftb_str_trim_right
+(ftb_ctx_t* ctx,const ftb_str_t src)
+{
+    ftb_error_ret(!src, NULL);
+    u32 start, end;
+    ftb_str_t trimmed = NULL;
+    if(!__ftb_str_trim_bounds(src, &start, &end)) return false;
+    if (end > 0) {
+        for(u32 i = 0;i < end;++i)
+             ftb_da_append(ctx,trimmed, src[i]);
+//        ftb_da_appends(ctx,trimmed, src, end);
+    }
+    return trimmed;
+}
+
+FTBDEF ftb_str_t ftb_str_trim
+(ftb_ctx_t* ctx,const ftb_str_t src)
+{
+    ftb_error_ret(!src, NULL);
+    u32 start, end;
+    ftb_str_t trimmed = NULL;
+    if(!__ftb_str_trim_bounds(src, &start, &end)) return false;
+    if (end > start) {
+        ftb_da_appends(ctx,trimmed, (char*)src + start, end - start);
+    }
+    return trimmed;
+}
+
 static inline void __ftb_str_append_lowercase
 (ftb_ctx_t* ctx,ftb_str_t* dest_str, const u8* str, u32 char_len)
 {
@@ -1338,6 +1479,19 @@ FTBDEF bool ftb_str_check_valid
 {
     return (ftb_str_get_char_count(str) != -1);
 }
+
+FTBDEF bool ftb_str_cmp
+(const ftb_str_t str1,const ftb_str_t str2)
+{
+    if(!str1 && !str2) return true;
+    if(!str1) return false;
+    if(!str2) return false;
+    u32 c1 = ftb_da_count(str1);
+    u32 c2 = ftb_da_count(str2);
+    if(c1 != c2) return false;
+    return memcmp(str1,str2,c1) == 0;
+}
+
 
 FTBDEF ftb_path_t ftb_path_make_from_cstr
 (ftb_ctx_t* ctx,const char* str)
