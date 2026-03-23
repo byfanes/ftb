@@ -818,6 +818,102 @@ bool test_str_trim_utf8(void) {
     ftb_test_result(true);
 }
 
+bool test_str_compare(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_mem_set_mark(&ctx);
+    ftb_str_t s1 = 0;
+    ftb_str_t s2 = 0;
+
+    ftb_da_append_cstr(&ctx, s1, "Apple");
+    ftb_da_append_cstr(&ctx, s2, "Apple");
+
+    ftb_test_assert(ftb_str_cmp_cstr(s1, "Apple"), "Cmp cstr true");
+    ftb_test_assert(!ftb_str_cmp_cstr(s1, "Orange"), "Cmp cstr false");
+
+    ftb_test_assert(ftb_str_cmp(s1, s2), "Cmp str true");
+
+    ftb_da_append_cstr(&ctx, s2, "s");
+    ftb_test_assert(!ftb_str_cmp(s1, s2), "Cmp str false");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_str_to_cstr_empty(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_str_t s = 0;
+
+    char* cstr = ftb_str_to_cstr(&ctx, s);
+    ftb_test_assert(cstr != NULL, "Empty str to cstr not null");
+    ftb_test_assert(cstr[0] == '\0', "Empty cstr is null terminated");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_str_cmp_length_diff(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_str_t s1 = 0;
+    ftb_str_t s2 = 0;
+
+    ftb_da_append_cstr(&ctx, s1, "short");
+    ftb_da_append_cstr(&ctx, s2, "shorter");
+
+    ftb_test_assert(!ftb_str_cmp(s1, s2), "Different lengths not equal");
+    ftb_test_assert(!ftb_str_cmp(s2, s1), "Different lengths not equal reversed");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_str_append_loop(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_str_t s = 0;
+
+    for(int i = 0; i < 100; i++) {
+        ftb_da_append_cstr(&ctx, s, "A");
+    }
+    ftb_test_assert(ftb_da_count(s) == 100, "String length 100");
+    ftb_test_assert(ftb_da_capacity(s) >= 100, "Capacity grew");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_str_case_symbols(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_str_t s = 0;
+    ftb_str_t new_s = 0;
+    ftb_da_append_cstr(&ctx, s, "123 !@# aBc");
+
+    new_s = ftb_str_uppercase(&ctx,s);
+    ftb_test_assert(ftb_str_cmp_cstr(new_s, "123 !@# ABC"), "Uppercase ignores symbols");
+
+    new_s = ftb_str_lowercase(&ctx,s);
+    ftb_test_assert(ftb_str_cmp_cstr(new_s, "123 !@# abc"), "Lowercase ignores symbols");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_str_capacity_and_length(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_str_t s = 0;
+
+    ftb_test_assert(ftb_da_capacity(s) == 0, "Default string capacity");
+    ftb_test_assert(ftb_da_count(s) == 0, "Default string count");
+
+    ftb_da_append_cstr(&ctx, s, "0123456789");
+    ftb_test_assert(ftb_da_count(s) == 10, "Length after append");
+
+    ftb_str_clear(s);
+    ftb_test_assert(ftb_da_count(s) == 0, "Length after clear");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+
 /*
  * ==========================================
  * MAIN ENTRY POINT
@@ -845,27 +941,26 @@ int main(void)
     ftb_test_add(tests, test_str_lowercase);
     ftb_test_add(tests, test_str_uppercase);
     ftb_test_add(tests, test_str_trim_utf8);
-    #if 0
     ftb_test_add(tests, test_str_compare);
+    ftb_test_add(tests, test_str_to_cstr_empty);
+    ftb_test_add(tests, test_str_cmp_length_diff);
+    ftb_test_add(tests, test_str_append_loop);
+    ftb_test_add(tests, test_str_case_symbols);
+    ftb_test_add(tests, test_str_capacity_and_length);
+
+    #if 0
     ftb_test_add(tests, test_str_starts_ends);
-    ftb_test_add(tests, test_str_trim_no_spaces);
     ftb_test_add(tests, test_str_find_contains);
     ftb_test_add(tests, test_str_remove_range);
     ftb_test_add(tests, test_string_utils);
-    ftb_test_add(tests, test_str_capacity_and_length);
-    ftb_test_add(tests, test_str_to_cstr_empty);
-    ftb_test_add(tests, test_str_cmp_length_diff);
     ftb_test_add(tests, test_str_cmp_prefix);
     ftb_test_add(tests, test_str_find_char_missing);
     ftb_test_add(tests, test_str_find_cstr_edge);
     ftb_test_add(tests, test_str_starts_ends_edge);
     ftb_test_add(tests, test_str_starts_ends_str);
     ftb_test_add(tests, test_str_find_str_advanced);
-    ftb_test_add(tests, test_str_trim_advanced);
     ftb_test_add(tests, test_str_remove_range_edge_cases);
-    ftb_test_add(tests, test_str_case_symbols);
     ftb_test_add(tests, test_str_null_handling);
-    ftb_test_add(tests, test_str_append_loop);
     #ifdef __GNUC__
     ftb_test_add(tests, test_str_printf);
     #endif

@@ -140,8 +140,8 @@ typedef uintptr_t   usize;
 #define ftb_da_header(da) ((da) ? (ftb_ptr_header_t*)(da) - 1 : 0)
 #define ftb_da_addr(da) ((da) ? (ftb_da_header(da))->addr : 0)
 #define ftb_da_count(da) ((da) ? (ftb_da_header(da))->count : 0)
-#define ftb_da_capacity(da) ((ftb_da_header(da))->capacity)
-#define ftb_da_elsize(da) ((ftb_da_header(da))->elsize)
+#define ftb_da_capacity(da) ((da) ? ((ftb_da_header(da))->capacity) : 0)
+#define ftb_da_elsize(da) ((da) ? ((ftb_da_header(da))->elsize) : 0)
 #define ftb_da_max_count(da) (ftb_da_capacity(da) / ftb_da_elsize(da))
 #define ftb_da_set_count(da,x) do{ (ftb_da_header(da))->count = (x);} while(0)
 #define ftb_da_set_capacity(da,x) do{ (ftb_da_header(da))->capacity = (x);} while(0)
@@ -578,14 +578,21 @@ typedef u8* ftb_path_t;
  */
 typedef u8* ftb_str_t;
 
-/* For ftb_str_lowercase function
+/* For ftb_str_cmp_cstr function
+ *   str -> First str.Can be null.
+ *   cstr -> Second str in cstr style.Can be null.
+ *   ret ftb_str_t -> Returns a true if both or same (in memory layout) or null.Otherwise false.
+ */
+FTBDEF bool ftb_str_cmp_cstr(const ftb_str_t str,const char* cstr);
+
+/* For ftb_str_cmp function
  *   str1 -> First str.Can be null.
  *   str2 -> Second str.Can be null.
  *   ret ftb_str_t -> Returns a true if both or same (in memory layout) or null.Otherwise false.
  */
 FTBDEF bool ftb_str_cmp(const ftb_str_t str1,const ftb_str_t str2);
 
-/* For ftb_str_lowercase function
+/* For ftb_str_trim_left function
  *   -dep -> May not contains some sequences.They should be implemented.
  *   ctx -> Pointing to the context.
  *   str -> A str which will be use in construction of the new str with trimmed only left.
@@ -593,7 +600,7 @@ FTBDEF bool ftb_str_cmp(const ftb_str_t str1,const ftb_str_t str2);
  */
 FTBDEF ftb_str_t ftb_str_trim_left(ftb_ctx_t* ctx,const ftb_str_t src);
 
-/* For ftb_str_lowercase function
+/* For ftb_str_trim_right function
  *   -dep -> May not contains some sequences.They should be implemented.
  *   ctx -> Pointing to the context.
  *   str -> A str which will be use in construction of the new str with trimmed only right.
@@ -601,7 +608,7 @@ FTBDEF ftb_str_t ftb_str_trim_left(ftb_ctx_t* ctx,const ftb_str_t src);
  */
 FTBDEF ftb_str_t ftb_str_trim_right(ftb_ctx_t* ctx,const ftb_str_t src);
 
-/* For ftb_str_lowercase function
+/* For ftb_str_trim function
  *   -dep -> May not contains some sequences.They should be implemented.
  *   ctx -> Pointing to the context.
  *   str -> A str which will be use in construction of the new str with trimmed both sides.
@@ -1492,6 +1499,17 @@ FTBDEF bool ftb_str_cmp
     return memcmp(str1,str2,c1) == 0;
 }
 
+FTBDEF bool ftb_str_cmp_cstr
+(const ftb_str_t str,const char* cstr)
+{
+    if(!str && !cstr) return true;
+    if(!str) return false;
+    if(!cstr) return false;
+    u32 c1 = ftb_da_count(str);
+    u32 c2 = strlen(cstr);
+    if(c1 != c2) return false;
+    return memcmp(str,cstr,c1) == 0;
+}
 
 FTBDEF ftb_path_t ftb_path_make_from_cstr
 (ftb_ctx_t* ctx,const char* str)
