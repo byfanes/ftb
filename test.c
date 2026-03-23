@@ -269,7 +269,7 @@ bool test_dir_operations(void) {
         ftb_test_assert(ftb_dir_mkdir_ifnot_exists(test_dir), "Create existing directory safely");
 
         ftb_dir_remove(test_dir);
-        
+
         ftb_test_assert(!ftb_dir_exists(test_dir), "Dir should be removed");
     }
     ftb_test_result(true);
@@ -514,6 +514,249 @@ bool test_time_resolution(void) {
 
 /*
  * ==========================================
+ * UTF-8 VALIDATION TESTS
+ * ==========================================
+ */
+
+bool test_str_valid(void) {
+    ftb_str_t str = NULL;
+
+    const char* ascii = "Hello World!";
+    ftb_da_append_cstr(FTB_RAW,str,ascii);
+    ftb_test_assert(ftb_str_check_valid(str) == true, "Valid 1-byte (ASCII) string");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    u8 valid_2byte[] = { 0xC3, 0xB1 };
+    ftb_da_appends(FTB_RAW,str, valid_2byte,2);
+    ftb_test_assert(ftb_str_check_valid(str) == true, "Valid 2-byte sequence");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    u8 valid_3byte[] = { 0xE2, 0x82, 0xAC };
+    ftb_da_appends(FTB_RAW,str, valid_3byte,3);
+    ftb_test_assert(ftb_str_check_valid(str) == true, "Valid 3-byte sequence");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    u8 valid_4byte[] = { 0xF0, 0x90, 0x8D, 0x88 };
+    ftb_da_appends(FTB_RAW,str, valid_4byte,4);
+    ftb_test_assert(ftb_str_check_valid(str) == true, "Valid 4-byte sequence");
+    ftb_mem_free(FTB_RAW,str);
+
+    ftb_test_result(true);
+}
+
+bool test_str_invalid(void) {
+    ftb_str_t str = NULL;
+
+    ftb_da_append(FTB_RAW,str, 0x80);
+    ftb_test_assert(ftb_str_check_valid(str) == false, "Fails on stray continuation byte");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    ftb_da_append(FTB_RAW,str, 0xFF);
+    ftb_test_assert(ftb_str_check_valid(str) == false, "Fails on completely invalid byte (0xFF)");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    ftb_da_append(FTB_RAW,str, 0xC3);
+    ftb_test_assert(ftb_str_check_valid(str) == false, "Fails on truncated 2-byte sequence");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    ftb_da_append(FTB_RAW,str, 0xE2);
+    ftb_da_append(FTB_RAW,str, 0x82);
+    ftb_test_assert(ftb_str_check_valid(str) == false, "Fails on truncated 3-byte sequence");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    ftb_da_append(FTB_RAW,str, 0xF0);
+    ftb_da_append(FTB_RAW,str, 0x90);
+    ftb_da_append(FTB_RAW,str, 0x20);
+    ftb_da_append(FTB_RAW,str, 0x88);
+    ftb_test_assert(ftb_str_check_valid(str) == false, "Fails on malformed continuation byte");
+    ftb_mem_free(FTB_RAW,str);
+
+    ftb_test_result(true);
+}
+
+bool test_str_edge_cases(void) {
+    ftb_str_t str = NULL;
+
+    ftb_test_assert(ftb_str_check_valid(str) == true, "Empty string is valid UTF-8");
+
+    const char* mixed = "Valid ASCII ";
+    ftb_da_append_cstr(FTB_RAW,str, mixed);
+    ftb_da_append(FTB_RAW,str, 0xC3);
+    ftb_test_assert(ftb_str_check_valid(str) == false,
+        "Fails on truncated byte at end of long string");
+    ftb_mem_free(FTB_RAW,str);
+
+    ftb_test_result(true);
+}
+
+bool test_str_char_count(void) {
+    ftb_str_t str = NULL;
+
+    const char* ascii = "Hello";
+    ftb_da_append_cstr(FTB_RAW,str, ascii);
+    ftb_test_assert(ftb_str_get_char_count(str) == 5, "ASCII string char count is 5");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    /* "ññ" (4 bytes, 2 chars) */
+    u8 spanish[] = { 0xC3, 0xB1, 0xC3, 0xB1 };
+    ftb_da_appends(FTB_RAW,str, spanish,4);
+    ftb_test_assert(ftb_str_get_char_count(str) == 2, "2-byte UTF-8 string char count is 2");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    /* "𐍈" (4 bytes, 1 char) */
+    u8 emoji[] = { 0xF0, 0x90, 0x8D, 0x88 };
+    ftb_da_appends(FTB_RAW,str, emoji,4);
+    ftb_test_assert(ftb_str_get_char_count(str) == 1, "4-byte UTF-8 emoji char count is 1");
+    ftb_mem_free(FTB_RAW,str);
+    str = NULL;
+
+    /* "A ñ 𐍈!" -> 'A'(1) + ' '(1) + 'ñ'(2) + ' '(1) + '𐍈'(4) + '!'(1) */
+    /* = 10 bytes, 6 characters */
+    u8 mixed[] = { 'A', ' ', 0xC3, 0xB1, ' ', 0xF0, 0x90, 0x8D, 0x88, '!' };
+    ftb_da_appends(FTB_RAW,str, mixed,10);
+    ftb_test_assert(ftb_str_get_char_count(str) == 6, "Mixed UTF-8 string char count is 6");
+    ftb_mem_free(FTB_RAW,str);
+
+    ftb_test_result(true);
+}
+
+bool test_str_basic_ops(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_str_t s = 0;
+    ftb_str_t s2 = 0;
+
+    // TODO strcmp
+    ftb_test_assert(ftb_da_count(s) == 0, "String not empty");
+
+    ftb_da_append_cstr(&ctx, s, "Hello");
+    ftb_test_assert(strcmp((char*)s, "Hello") == 0, "Append cstr content");
+    ftb_test_assert(ftb_da_count(s) == 5, "Append cstr count");
+
+    ftb_da_append_cstr(&ctx, s2, " World");
+    ftb_da_appends(&ctx, s, s2,ftb_da_count(s2));
+
+    ftb_test_assert(strcmp((char*)s, "Hello World") == 0, "Append str content");
+    ftb_test_assert(ftb_da_count(s) == 11, "Append str count");
+
+    char* raw = ftb_str_to_cstr(&ctx, s);
+    ftb_test_assert(strcmp(raw, "Hello World") == 0, "To cstr check");
+
+    ftb_str_clear(s);
+    ftb_test_assert(ftb_da_count(s) == 0, "Clear count");
+    ftb_test_assert(s[0] == 0, "Clear data");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_str_lowercase(void) {
+    ftb_str_t src = NULL;
+
+    const char* ascii = "HeLlO WOrLd!";
+    ftb_da_append_cstr(FTB_RAW,src, ascii);
+
+    ftb_str_t res1 = ftb_str_lowercase(FTB_RAW,src);
+    ftb_test_assert(memcmp(res1, "hello world!", 12) == 0, "ASCII Lowercase");
+    ftb_mem_free(FTB_RAW,src);
+    ftb_mem_free(FTB_RAW,res1);
+    src = NULL;
+
+    /* 2. Multi-byte Latin-1 Test (Á -> á, Ñ -> ñ, Ö -> ö) */
+    u8 latin_upper[] = { 0xC3, 0x81, 0xC3, 0x91, 0xC3, 0x96 };
+    u8 latin_lower_expected[] = { 0xC3, 0xA1, 0xC3, 0xB1, 0xC3, 0xB6 };
+    ftb_da_appends(FTB_RAW,src, latin_upper,sizeof(latin_upper));
+
+    ftb_str_t res2 = ftb_str_lowercase(FTB_RAW,src);
+    ftb_test_assert(ftb_da_count(res2) == 6, "Latin-1 byte count remains 6");
+    ftb_test_assert(memcmp(res2, latin_lower_expected, 6) == 0, "Latin-1 Lowercase");
+    ftb_mem_free(FTB_RAW,src);
+    ftb_mem_free(FTB_RAW,res2);
+    src = NULL;
+
+    /* 3. Turkish Locale Length Change Test ('İ' -> 'i') */
+    u8 turkish_i[] = { 0xC4, 0xB0 };
+    ftb_da_appends(FTB_RAW,src,turkish_i,sizeof(turkish_i));
+
+    ftb_str_t res3 = ftb_str_lowercase(FTB_RAW,src);
+    ftb_test_assert(ftb_da_count(res3) == 1, "Turkish İ shrinks from 2 bytes to 1 byte");
+    ftb_test_assert(res3[0] == 'i', "Turkish İ lowercases to standard i");
+    ftb_mem_free(FTB_RAW,src);
+    ftb_mem_free(FTB_RAW,res3);
+    src = NULL;
+
+    /* 4. Cyrillic & Greek Extended Test */
+    /* ПРИВЕТ ΓΕΙΑ -> привет γεια */
+    const char* ext_upper =
+        "\xD0\x9F\xD0\xA0\xD0\x98\xD0\x92\xD0\x95\xD0\xA2 \xCE\x93\xCE\x95\xCE\x99\xCE\x91";
+    const char* ext_lower =
+        "\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82 \xCE\xB3\xCE\xB5\xCE\xB9\xCE\xB1";
+    ftb_da_append_cstr(FTB_RAW, src, ext_upper);
+    ftb_str_t res4 = ftb_str_lowercase(FTB_RAW, src);
+    ftb_test_assert(memcmp(res4, ext_lower, strlen(ext_lower)) == 0, "Cyrillic & Greek Lowercase");
+    ftb_mem_free(FTB_RAW, src);
+    ftb_mem_free(FTB_RAW, res4);
+
+    ftb_test_result(true);
+}
+
+bool test_str_uppercase(void) {
+    ftb_str_t src = NULL;
+
+    /* 1. ASCII */
+    const char* ascii = "hello world!";
+    ftb_da_append_cstr(FTB_RAW, src, ascii);
+    ftb_str_t res1 = ftb_str_uppercase(FTB_RAW, src);
+    ftb_test_assert(memcmp(res1, "HELLO WORLD!", 12) == 0, "ASCII Uppercase");
+    ftb_mem_free(FTB_RAW, src);
+    ftb_mem_free(FTB_RAW, res1);
+    src = NULL;
+
+    /* 2. Turkish Locale (ıiğşçöü -> IİĞŞÇÖÜ) */
+    const char* tr_lower = "\xC4\xB1" "i" "\xC4\x9F" "\xC5\x9F" "\xC3\xA7" "\xC3\xB6" "\xC3\xBC";
+    const char* tr_upper = "I" "\xC4\xB0" "\xC4\x9E" "\xC5\x9E" "\xC3\x87" "\xC3\x96" "\xC3\x9C";
+    ftb_da_append_cstr(FTB_RAW, src, tr_lower);
+    ftb_str_t res2 = ftb_str_uppercase(FTB_RAW, src);
+    ftb_test_assert(ftb_da_count(res2) == 13, "Turkish Uppercase Byte Count");
+    ftb_test_assert(memcmp(res2, tr_upper, 13) == 0, "Turkish Uppercase");
+    ftb_mem_free(FTB_RAW, src);
+    ftb_mem_free(FTB_RAW, res2);
+    src = NULL;
+
+    /* 3. Cyrillic (привет -> ПРИВЕТ) */
+    const char* cy_lower = "\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82";
+    const char* cy_upper = "\xD0\x9F\xD0\xA0\xD0\x98\xD0\x92\xD0\x95\xD0\xA2";
+    ftb_da_append_cstr(FTB_RAW, src, cy_lower);
+    ftb_str_t res3 = ftb_str_uppercase(FTB_RAW, src);
+    ftb_test_assert(ftb_da_count(res3) == 12, "Cyrillic Uppercase Byte Count");
+    ftb_test_assert(memcmp(res3, cy_upper, 12) == 0, "Cyrillic Uppercase");
+    ftb_mem_free(FTB_RAW, src);
+    ftb_mem_free(FTB_RAW, res3);
+    src = NULL;
+
+    /* 4. Greek (γεια -> ΓΕΙΑ) */
+    const char* gr_lower = "\xCE\xB3\xCE\xB5\xCE\xB9\xCE\xB1";
+    const char* gr_upper = "\xCE\x93\xCE\x95\xCE\x99\xCE\x91";
+    ftb_da_append_cstr(FTB_RAW, src, gr_lower);
+    ftb_str_t res4 = ftb_str_uppercase(FTB_RAW, src);
+    ftb_test_assert(ftb_da_count(res4) == 8, "Greek Uppercase Byte Count");
+    ftb_test_assert(memcmp(res4, gr_upper, 8) == 0, "Greek Uppercase");
+    ftb_mem_free(FTB_RAW, src);
+    ftb_mem_free(FTB_RAW, res4);
+
+    ftb_test_result(true);
+}
+
+/*
+ * ==========================================
  * MAIN ENTRY POINT
  * ==========================================
  */
@@ -521,7 +764,7 @@ bool test_time_resolution(void) {
 int main(void)
 {
     ftb_test_t* tests = 0;
-    
+
     /* --- Memory Tests --- */
     ftb_test_add(tests, test_memory_alloc_and_free);
     ftb_test_add(tests, test_mem_free_direct);
@@ -532,9 +775,13 @@ int main(void)
     ftb_test_add(tests, test_memory_zalloc_large);
 
     /* --- String Tests --- */
-    #if 0
+    ftb_test_add(tests, test_str_valid);
+    ftb_test_add(tests, test_str_invalid);
+    ftb_test_add(tests, test_str_edge_cases);
     ftb_test_add(tests, test_str_basic_ops);
-    ftb_test_add(tests, test_str_case);
+    ftb_test_add(tests, test_str_lowercase);
+    ftb_test_add(tests, test_str_uppercase);
+    #if 0
     ftb_test_add(tests, test_str_compare);
     ftb_test_add(tests, test_str_starts_ends);
     ftb_test_add(tests, test_str_trim);

@@ -167,6 +167,8 @@ typedef uintptr_t   usize;
     } while(0)
 #define ftb_da_add_shadow_null(ctx,da) \
     do { ftb_da_append((ctx),(da),0);ftb_da_count_dec((da)); } while(0)
+#define ftb_da_append_cstr(ctx,da,str) \
+    do { ftb_da_appends((ctx),(da),str,strlen(str)); } while(0)
 
 /* For ftb_da_reserve macro
  *   amount -> is in count in da's type which will be added with existing capacity
@@ -319,7 +321,7 @@ typedef enum {
     ftb_log_level_all = 0,
     ftb_log_level_info,
     ftb_log_level_warn,
-    ftb_log_level_error,
+    ftb_log_level_error
 } ftb_ctx_log_level_t;
 
 /* For ftb_ctx_logger_t struct
@@ -566,6 +568,66 @@ typedef u8* ftb_bytes_t;
  */
 typedef u8* ftb_path_t;
 
+/* For ftb_str_t type
+ *   A da list for u8.It is a string format which supports UTF-8.
+ *   UTF8 character count can getable via 'ftb_str_get_char_count'.
+ *   For printing like in printf you should use it with 'ftb_da_count'.
+ *   For cstr style use you can add shadow null via ftb_da_add_shadow_null
+ *   it doesnt increase the count but add a null to end it needs to be updated
+ *   after modification before the usage.
+ */
+typedef u8* ftb_str_t;
+
+/* For ftb_str_to_cstr function
+ *   str -> A str which will be copied and append null terminator.
+ *   ret bool -> Returns "\0" for null strs.Otherwise data + '\0'.
+ */
+FTBDEF char* ftb_str_to_cstr(ftb_ctx_t* ctx,const ftb_str_t str);
+
+/* For ftb_str_clear function
+ *   str -> A str which will be clear.Old buffer set to zero.Keeps the capacity.
+ *   ret bool -> Returns a false for null strs.Otherwise true.
+ */
+FTBDEF bool ftb_str_clear(const ftb_str_t str);
+
+/* For ftb_str_lowercase function
+ *   -dep -> May not contains some sequences.They should be implemented.
+ *   ctx -> Pointing to the context.
+ *   str -> A str which will be use in construction of the new str with lowercases.
+ *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str.
+ */
+FTBDEF ftb_str_t ftb_str_lowercase(ftb_ctx_t* ctx,const ftb_str_t str);
+
+/* For ftb_str_uppercase function
+ *   -dep -> May not contains some sequences.They should be implemented.
+ *   ctx -> Pointing to the context.
+ *   str -> A str which will be use in construction of the new str with uppercases.
+ *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str.
+ */
+FTBDEF ftb_str_t ftb_str_uppercase(ftb_ctx_t* ctx,const ftb_str_t str);
+
+/* For ftb_str_check_valid function
+ *   str -> A str which will be validate.
+ *   ret bool -> Returns a false for invalid.Otherwise true including empty-null strs.
+ */
+FTBDEF bool ftb_str_check_valid(const ftb_str_t str);
+
+/* For ftb_str_get_char_count function
+ *   str -> A str which will be counted.For empty-null strs return 0.
+ *   ret bool -> Returns a -1 for invalid.Otherwise utf8-char-count.
+ */
+FTBDEF i64 ftb_str_get_char_count(const ftb_str_t str);
+
+/* For ftb_str_get_char_count function
+ *   str -> A str which will be counted.For empty-null strs return 0.Only check start bytes
+ *   ret bool -> Returns a -1 for invalid.Otherwise utf8-char-count.
+ */
+FTBDEF i64 ftb_str_get_char_count_fast(const ftb_str_t str);
+
+/* For ftb_path_make_from_cstr function
+ *   path -> The path which will be copied and turn to 'ftb_path_t' type.
+ *   ret ftb_path_t -> Returns a 'ftb_path_t' does not fail.
+ */
 FTBDEF ftb_path_t ftb_path_make_from_cstr(ftb_ctx_t* ctx,const char* str);
 
 /* For ftb_path_is_dir function
@@ -1057,6 +1119,226 @@ FTBDEF bool ftb_log_set_log_level
     return false;
 }
 
+static inline u32 __ftb_str_utf8_char_len
+(const u8* str,const u32 remaining_bytes)
+{
+    if (remaining_bytes == 0) return 0;
+    u8 c = str[0];
+    if ((c & 0x80) == 0x00) {
+        /* 1-byte sequence: 0xxxxxxx */
+        return 1;
+    }
+    else if ((c & 0xE0) == 0xC0) {
+        /* 2-byte sequence: 110xxxxx 10xxxxxx */
+        if (remaining_bytes < 2 || (str[1] & 0xC0) != 0x80) return 0;
+        return 2;
+    }
+    else if ((c & 0xF0) == 0xE0) {
+        /* 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx */
+        if (remaining_bytes < 3 ||
+           (str[1] & 0xC0) != 0x80 ||
+           (str[2] & 0xC0) != 0x80) return 0;
+        return 3;
+    }
+    else if ((c & 0xF8) == 0xF0) {
+        /* 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx */
+        if (remaining_bytes < 4 ||
+           (str[1] & 0xC0) != 0x80 ||
+           (str[2] & 0xC0) != 0x80 ||
+           (str[3] & 0xC0) != 0x80) return 0;
+        return 4;
+    }
+    /* Invalid start byte */
+    return 0;
+}
+
+static inline void __ftb_str_append_lowercase
+(ftb_ctx_t* ctx,ftb_str_t* dest_str, const u8* str, u32 char_len)
+{
+    u32 cp = 0;
+    if (char_len == 1) cp = str[0];
+    else if (char_len == 2) cp = ((str[0] & 0x1F) << 6) | (str[1] & 0x3F);
+    else if (char_len == 3) cp = ((str[0] & 0x0F) << 12) |
+        ((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
+    else if (char_len == 4) cp = ((str[0] & 0x07) << 18) |
+        ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
+    if (cp >= 'A' && cp <= 'Z') { cp += 32; }
+    else if (cp >= 0x00C0 && cp <= 0x00D6) { cp += 0x20; }
+    else if (cp >= 0x00D8 && cp <= 0x00DE) { cp += 0x20; }
+    else if (cp == 0x0130) { cp = 0x0069; /* İ -> i */ }
+    else if (cp == 0x011E) { cp = 0x011F; /* Ğ -> ğ */ }
+    else if (cp == 0x015E) { cp = 0x015F; /* Ş -> ş */ }
+    else if (cp == 0x0178) { cp = 0x00FF; /* Ÿ -> ÿ */ }
+    else if (cp >= 0x0410 && cp <= 0x042F)
+    { /* Cyrillic А-Я -> а-я */ cp += 0x20; }
+    else if (cp >= 0x0391 && cp <= 0x03A9 && cp != 0x03A2)
+    { /* Greek Α-Ω */ cp += 0x20; }
+    else {
+        /* General Latin Extended-A pairs (even -> odd) */
+        if ((cp >= 0x0100 && cp <= 0x012F) || (cp >= 0x0132 && cp <= 0x0137)
+            || (cp >= 0x014A && cp <= 0x0177)) {
+            if ((cp % 2) == 0) cp += 1;
+        } else if ((cp >= 0x0139 && cp <= 0x0148) || (cp >= 0x0179 && cp <= 0x017E)) {
+            if ((cp % 2) != 0) cp += 1; /* odd -> even */
+        }
+    }
+    if (cp <= 0x7F) {
+        ftb_da_append(ctx, *dest_str, (u8)cp);
+    } else if (cp <= 0x07FF) {
+        ftb_da_append(ctx, *dest_str, 0xC0 | (cp >> 6));
+        ftb_da_append(ctx, *dest_str, 0x80 | (cp & 0x3F));
+    } else if (cp <= 0xFFFF) {
+        ftb_da_append(ctx, *dest_str, 0xE0 | (cp >> 12));
+        ftb_da_append(ctx, *dest_str, 0x80 | ((cp >> 6) & 0x3F));
+        ftb_da_append(ctx, *dest_str, 0x80 | (cp & 0x3F));
+    } else {
+        ftb_da_append(ctx, *dest_str, 0xF0 | (cp >> 18));
+        ftb_da_append(ctx, *dest_str, 0x80 | ((cp >> 12) & 0x3F));
+        ftb_da_append(ctx, *dest_str, 0x80 | ((cp >> 6) & 0x3F));
+        ftb_da_append(ctx, *dest_str, 0x80 | (cp & 0x3F));
+    }
+}
+
+static inline void __ftb_str_append_uppercase
+(ftb_ctx_t* ctx,ftb_str_t* dest_str, const u8* str, u32 char_len)
+{
+    u32 cp = 0;
+    if (char_len == 1) cp = str[0];
+    else if (char_len == 2) cp = ((str[0] & 0x1F) << 6) | (str[1] & 0x3F);
+    else if (char_len == 3) cp = ((str[0] & 0x0F) << 12)
+        | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
+    else if (char_len == 4) cp = ((str[0] & 0x07) << 18)
+        | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
+    if (cp == 'i') { cp = 0x0130; /* 'i' -> 'İ' */ }
+    else if (cp >= 'a' && cp <= 'z') { cp -= 32; }
+    else if (cp >= 0x00E0 && cp <= 0x00F6) { cp -= 0x20; }
+    else if (cp >= 0x00F8 && cp <= 0x00FE) { cp -= 0x20; }
+    else if (cp == 0x00FF) { cp = 0x0178; /* ÿ -> Ÿ */ }
+    else if (cp == 0x0131) { cp = 0x0049; /* 'ı' -> 'I' */ }
+    else if (cp == 0x011F) { cp = 0x011E; /* ğ -> Ğ */ }
+    else if (cp == 0x015F) { cp = 0x015E; /* ş -> Ş */ }
+    else if (cp >= 0x0430 && cp <= 0x044F)
+    { /* Cyrillic а-я -> А-Я */ cp -= 0x20; }
+    else if (cp >= 0x03B1 && cp <= 0x03C9)
+    { /* Greek α-ω */
+        if (cp == 0x03C2) cp = 0x03A3; /* ς -> Σ */
+        else cp -= 0x20;
+    } else {
+        /* General Latin Extended-A pairs (odd -> even) */
+        if ((cp >= 0x0100 && cp <= 0x012F) || (cp >= 0x0132 && cp <= 0x0137)
+            || (cp >= 0x014A && cp <= 0x0177)) {
+            if ((cp % 2) != 0) cp -= 1;
+        } else if ((cp >= 0x0139 && cp <= 0x0148) || (cp >= 0x0179 && cp <= 0x017E)) {
+            if ((cp % 2) == 0) cp -= 1; /* even -> odd */
+        }
+    }
+    if (cp <= 0x7F) {
+        ftb_da_append(ctx, *dest_str, (u8)cp);
+    } else if (cp <= 0x07FF) {
+        ftb_da_append(ctx, *dest_str, 0xC0 | (cp >> 6));
+        ftb_da_append(ctx, *dest_str, 0x80 | (cp & 0x3F));
+    } else if (cp <= 0xFFFF) {
+        ftb_da_append(ctx, *dest_str, 0xE0 | (cp >> 12));
+        ftb_da_append(ctx, *dest_str, 0x80 | ((cp >> 6) & 0x3F));
+        ftb_da_append(ctx, *dest_str, 0x80 | (cp & 0x3F));
+    } else {
+        ftb_da_append(ctx, *dest_str, 0xF0 | (cp >> 18));
+        ftb_da_append(ctx, *dest_str, 0x80 | ((cp >> 12) & 0x3F));
+        ftb_da_append(ctx, *dest_str, 0x80 | ((cp >> 6) & 0x3F));
+        ftb_da_append(ctx, *dest_str, 0x80 | (cp & 0x3F));
+    }
+}
+
+FTBDEF ftb_str_t ftb_str_uppercase
+(ftb_ctx_t* ctx,const ftb_str_t src)
+{
+    ftb_error_ret(!src, NULL);
+    ftb_str_t upper_str = NULL;
+    u32 count = ftb_da_count(src);
+    for (u32 i = 0; i < count; )
+    {
+        u32 len = __ftb_str_utf8_char_len(src + i, count - i);
+        if (len == 0) { ftb_mem_free(ctx,upper_str); return 0; }
+        __ftb_str_append_uppercase(ctx, &upper_str, src + i, len);
+        i += len;
+    }
+    return upper_str;
+}
+
+FTBDEF ftb_str_t ftb_str_lowercase
+(ftb_ctx_t* ctx,const ftb_str_t src)
+{
+    ftb_error_ret(!src, NULL);
+    ftb_str_t lower_str = NULL;
+    u32 count = ftb_da_count(src);
+    for (u32 i = 0; i < count; )
+    {
+        u32 len = __ftb_str_utf8_char_len(src + i, count - i);
+        if (len == 0) { ftb_mem_free(ctx,lower_str);return 0; }
+        __ftb_str_append_lowercase(ctx,&lower_str, src + i, len);
+        i += len;
+    }
+    return lower_str;
+}
+
+FTBDEF bool ftb_str_clear
+(const ftb_str_t str)
+{
+    ftb_error_ret(!str,false);
+    memset(str,0,ftb_da_count(str));
+    ftb_da_set_count(str,0);
+    return true;
+}
+
+FTBDEF char* ftb_str_to_cstr
+(ftb_ctx_t* ctx,const ftb_str_t str)
+{
+    u32 count = 0;
+    if(str) {
+        count = ftb_da_count(str);
+    }
+    char* tmp = ftb_mem_alloc(ctx,count+1);
+    memcpy(tmp,str,count);
+    tmp[count] = 0;
+    return tmp;
+}
+
+FTBDEF i64 ftb_str_get_char_count
+(const ftb_str_t str)
+{
+    if(!str) return 0;
+    u32 byte_count = ftb_da_count(str);
+    u32 char_count = 0;
+    for (u32 i = 0; i < byte_count; )
+    {
+        u32 len = __ftb_str_utf8_char_len(str + i, byte_count - i);
+        if(len == 0) return -1;
+        i += len;
+        char_count++;
+    }
+    return char_count;
+}
+
+FTBDEF i64 ftb_str_get_char_count_fast
+(const ftb_str_t str)
+{
+    if(!str) return 0;
+    u32 byte_count = ftb_da_count(str);
+    u32 char_count = 0;
+    for (u32 i = 0; i < byte_count; ++i) {
+        if ((str[i] & 0xC0) != 0x80) {
+            char_count++;
+        }
+    }
+    return char_count;
+}
+
+FTBDEF bool ftb_str_check_valid
+(const ftb_str_t str)
+{
+    return (ftb_str_get_char_count(str) != -1);
+}
+
 FTBDEF ftb_path_t ftb_path_make_from_cstr
 (ftb_ctx_t* ctx,const char* str)
 {
@@ -1090,12 +1372,12 @@ FTBDEF bool ftb_file_exists
 {
     ftb_error_ret(!path, false);
     char* tmp = __ftb_tmp_safe_path(path);
-    #ifdef _WIN32
+#ifdef _WIN32
     DWORD attr = GetFileAttributesA(path);
     __ftb_ret_free(tmp,(attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)));
-    #else
+#else
     __ftb_ret_free(tmp,access(tmp,F_OK)==0);
-    #endif
+#endif
 }
 
 FTBDEF bool ftb_file_copy
@@ -1116,13 +1398,13 @@ FTBDEF bool ftb_dir_exists
 {
     ftb_error_ret(!path, false);
     char* tmp = __ftb_tmp_safe_path(path);
-    #ifdef _WIN32
+#ifdef _WIN32
     DWORD attr = GetFileAttributesA(tmp);
     __ftb_ret_free(tmp,(attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)));
-    #else
+#else
     struct stat s;
     __ftb_ret_free(tmp,(stat(tmp,&s)==0 && S_ISDIR(s.st_mode)));
-    #endif
+#endif
 }
 
 FTBDEF bool ftb_dir_mkdir
@@ -1130,11 +1412,11 @@ FTBDEF bool ftb_dir_mkdir
 {
     ftb_error_ret(!path, false);
     char* tmp = __ftb_tmp_safe_path(path);
-    #ifdef _WIN32
+#ifdef _WIN32
     __ftb_ret_free(tmp,(_mkdir(tmp)==0 || errno==EEXIST));
-    #else
+#else
     __ftb_ret_free(tmp,(mkdir(tmp,0755)==0 || errno==EEXIST));
-    #endif
+#endif
 }
 
 FTBDEF bool ftb_dir_mkdir_ifnot_exists
@@ -1153,11 +1435,11 @@ FTBDEF bool ftb_file_remove
 {
     ftb_error_ret(!path, false);
     char* tmp = __ftb_tmp_safe_path(path);
-    #ifdef _WIN32
+#ifdef _WIN32
     __ftb_ret_free(tmp,DeleteFileA(tmp));
-    #else
+#else
     __ftb_ret_free(tmp,unlink(tmp)==0);
-    #endif
+#endif
 }
 
 FTBDEF i64 ftb_file_size(const ftb_path_t path)
@@ -1235,7 +1517,6 @@ FTBDEF bool ftb_dir_remove
         NULL,
         NULL
     };
-
     file_op.pFrom = tmp;
     __ftb_ret_free(tmp,(SHFileOperationA(&file_op) == 0));
 #else
