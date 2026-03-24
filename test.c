@@ -765,18 +765,21 @@ bool test_str_trim_utf8(void) {
     const char* ascii = "  \t  Hello World! \n \r ";
     ftb_da_append_cstr(FTB_RAW,src, ascii);
 
-    ftb_str_t ltrim1 = ftb_str_trim_left(src);
-    ftb_str_t rtrim1 = ftb_str_trim_right(src);
-    ftb_str_t trim1  = ftb_str_trim(src);
+    ftb_str_t ltrim1 = ftb_mem_clone(src);
+    ftb_str_trim_left(ltrim1);
+    ftb_str_t rtrim1 = ftb_mem_clone(src);
+    ftb_str_trim_right(rtrim1);
+    ftb_str_t trim1  = ftb_mem_clone(src);
+    ftb_str_trim(trim1);
 
     ftb_test_assert(ftb_da_count(ltrim1) == 17, "Left Trim ASCII length");
-    ftb_test_assert(memcmp(ltrim1, "Hello World! \n \r ", 18) == 0, "Left Trim ASCII content");
+    ftb_test_assert(ftb_str_cmp_cstr(ltrim1, "Hello World! \n \r "), "Left Trim ASCII content");
 
     ftb_test_assert(ftb_da_count(rtrim1) == 17, "Right Trim ASCII length");
-    ftb_test_assert(memcmp(rtrim1, "  \t  Hello World!", 16) == 0, "Right Trim ASCII content");
+    ftb_test_assert(ftb_str_cmp_cstr(rtrim1, "  \t  Hello World!"), "Right Trim ASCII content");
 
     ftb_test_assert(ftb_da_count(trim1) == 12, "Full Trim ASCII length");
-    ftb_test_assert(memcmp(trim1, "Hello World!", 12) == 0, "Full Trim ASCII content");
+    ftb_test_assert(ftb_str_cmp_cstr(trim1, "Hello World!"), "Full Trim ASCII content");
 
     ftb_mem_free(src);
     ftb_mem_free(ltrim1);
@@ -795,7 +798,8 @@ bool test_str_trim_utf8(void) {
 
     ftb_da_appends(FTB_RAW,src, complex_str, sizeof(complex_str));
 
-    ftb_str_t trim2 = ftb_str_trim(src);
+    ftb_str_t trim2 = ftb_mem_clone(src);
+    ftb_str_trim(trim2);
 
     u8 expected[] = { 'M','e','r','h','a','b','a',' ', 0xF0, 0x9F, 0x8C, 0x8D };
 
@@ -811,7 +815,8 @@ bool test_str_trim_utf8(void) {
     u8 all_spaces[] = { 0x20, 0xC2, 0xA0, 0xE3, 0x80, 0x80, '\t', '\n' };
     ftb_da_appends(FTB_RAW,src, all_spaces, sizeof(all_spaces));
 
-    ftb_str_t trim3 = ftb_str_trim(src);
+    ftb_str_t trim3 = ftb_mem_clone(src);
+    ftb_str_trim(trim3);
     ftb_da_add_shadow_null(FTB_RAW,trim3);
     ftb_test_assert(ftb_da_count(trim3) == 0,
          "Trimming an all-space string returns empty string");
@@ -844,14 +849,13 @@ bool test_str_compare(void) {
 }
 
 bool test_str_to_cstr_empty(void) {
-    ftb_ctx_t ctx = {0};
     ftb_str_t s = 0;
 
     char* cstr = ftb_str_to_cstr(s);
     ftb_test_assert(cstr != NULL, "Empty str to cstr not null");
     ftb_test_assert(cstr[0] == '\0', "Empty cstr is null terminated");
+    free(cstr);
 
-    ftb_mem_delete_ctx(&ctx);
     ftb_test_result(true);
 }
 
@@ -927,7 +931,7 @@ bool test_str_capacity_and_length(void) {
 int main(void)
 {
     ftb_test_t* tests = 0;
-    
+
     /* --- Memory Tests --- */
     ftb_test_add(tests, test_memory_alloc_and_free);
     ftb_test_add(tests, test_mem_free_direct);
@@ -951,7 +955,7 @@ int main(void)
     ftb_test_add(tests, test_str_append_loop);
     ftb_test_add(tests, test_str_case_symbols);
     ftb_test_add(tests, test_str_capacity_and_length);
-    
+
     #if 0
     ftb_test_add(tests, test_str_starts_ends);
     ftb_test_add(tests, test_str_find_contains);

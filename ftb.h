@@ -398,6 +398,12 @@ FTBDEF void* ftb_mem_alloc(ftb_ctx_t* ctx,usize bytes);
 FTBDEF void* ftb_mem_zalloc(ftb_ctx_t* ctx,usize bytes);
 FTBDEF void* ftb_mem_realloc(ftb_ctx_t* ctx,void* ptr,usize bytes);
 
+/* For ftb_mem_clone function
+ *   ptr -> The pointer which will be copied to new pointer.
+ *   ret void* -> The pointer which identical to ptr but newly allocated.
+ */
+FTBDEF void* ftb_mem_clone(void* ptr);
+
 /* For ftb_mem_move function
  *   ptr -> The pointer which will be moved to new context.
  *   ctx -> The new context for the pointer can be FTB_RAW or a pointer.Will append to last stack.
@@ -607,37 +613,37 @@ typedef u8* ftb_str_t;
 /* For ftb_str_cmp_cstr function
  *   str -> First str.Can be null.
  *   cstr -> Second str in cstr style.Can be null.
- *   ret ftb_str_t -> Returns a true if both or same (in memory layout) or null.Otherwise false.
+ *   ret ftb_str_t -> Returns true if both or same (in memory layout) or null.Otherwise false.
  */
 FTBDEF bool ftb_str_cmp_cstr(const ftb_str_t str,const char* cstr);
 
 /* For ftb_str_cmp function
  *   str1 -> First str.Can be null.
  *   str2 -> Second str.Can be null.
- *   ret ftb_str_t -> Returns a true if both or same (in memory layout) or null.Otherwise false.
+ *   ret ftb_str_t -> Returns true if both or same (in memory layout) or null.Otherwise false.
  */
 FTBDEF bool ftb_str_cmp(const ftb_str_t str1,const ftb_str_t str2);
 
 /* For ftb_str_trim_left function
  *   -dep -> May not contains some sequences.They should be implemented.
- *   str -> A str which will be use in construction of the new str with trimmed only left.
- *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str with the same ctx with src.
+ *   str -> A str which will be used in creating the trimmeed left version and set to that.
+ *   ret bool -> Returns true for successfull operations.Otherwise false and reverts the state.
  */
-FTBDEF ftb_str_t ftb_str_trim_left(const ftb_str_t src);
+FTBDEF bool ftb_str_trim_left(const ftb_str_t src);
 
 /* For ftb_str_trim_right function
  *   -dep -> May not contains some sequences.They should be implemented.
- *   ctx -> Pointing to the context.
- *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str with the same ctx with src.
+ *   str -> A str which will be used in creating the trimmed right version and set to that.
+ *   ret bool -> Returns true for successfull operations.Otherwise false and reverts the state.
  */
-FTBDEF ftb_str_t ftb_str_trim_right(const ftb_str_t src);
+FTBDEF bool ftb_str_trim_right(const ftb_str_t src);
 
 /* For ftb_str_trim function
  *   -dep -> May not contains some sequences.They should be implemented.
- *   str -> A str which will be use in construction of the new str with trimmed both sides.
- *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str with the same ctx with src.
+ *   str -> A str which will be used in creating the trimmed version and set to that.
+ *   ret bool -> Returns true for successfull operations.Otherwise false and reverts the state.
  */
-FTBDEF ftb_str_t ftb_str_trim(const ftb_str_t src);
+FTBDEF bool ftb_str_trim(const ftb_str_t src);
 
 /* For ftb_str_to_cstr function
  *   str -> A str which will be copied and append null terminator.
@@ -653,14 +659,14 @@ FTBDEF bool ftb_str_clear(const ftb_str_t str);
 
 /* For ftb_str_lowercase function
  *   -dep -> May not contains some sequences.They should be implemented.
- *   str -> A str which will be use in construction of the new str with lowercases.
+ *   str -> A str which will be used in construction of the new str with lowercases.
  *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str in the same ctx with str.
  */
 FTBDEF ftb_str_t ftb_str_lowercase(const ftb_str_t str);
 
 /* For ftb_str_uppercase function
  *   -dep -> May not contains some sequences.They should be implemented.
- *   str -> A str which will be use in construction of the new str with uppercases.
+ *   str -> A str which will be used in construction of the new str with uppercases.
  *   ret ftb_str_t -> Returns a null for null strs.Otherwise new str in the same ctx with str.
  */
 FTBDEF ftb_str_t ftb_str_uppercase(const ftb_str_t str);
@@ -822,6 +828,20 @@ ALLFTBDEF bool ftb_file_write_cstr
 #ifndef FTB_FIRST_IMPLEMENTATION
 #define FTB_FIRST_IMPLEMENTATION
 
+FTBDEF void* ftb_mem_clone
+(void* ptr)
+{
+    if(!ptr) return 0;
+    ftb_ptr_header_t* header = ftb_da_header(ptr);
+    void* da = ftb_mem_zalloc(header->d.ctx,header->d.capacity);
+    assert(da);
+    u32 count = header->d.elsize * header->d.count;
+    ftb_da_set_count(da,header->d.count);
+    ftb_da_set_elsize(da,header->d.elsize);
+    memcpy(da,ptr,count);
+    return da;
+}
+
 FTBDEF void ftb_mem_move
 (ftb_ctx_t* ctx,void* ptr)
 {
@@ -858,7 +878,6 @@ FTBDEF void ftb_mem_free
 FTBDEF void* ftb_mem_alloc
 (ftb_ctx_t* ctx,usize bytes)
 {
-    assert(ctx);
     if(!bytes) return 0;
     ftb_ptr_header_t* header = FTB_MALLOC(bytes + sizeof(ftb_ptr_header_t));
     assert(header);
@@ -875,7 +894,6 @@ FTBDEF void* ftb_mem_alloc
 FTBDEF void* ftb_mem_zalloc
 (ftb_ctx_t* ctx,usize bytes)
 {
-    assert(ctx);
     if(!bytes) return 0;
     ftb_ptr_header_t* header = FTB_CALLOC(1,bytes + sizeof(ftb_ptr_header_t));
     assert(header);
@@ -1294,49 +1312,44 @@ static inline bool __ftb_str_trim_bounds
     return true;
 }
 
-FTBDEF ftb_str_t ftb_str_trim_left
+FTBDEF bool ftb_str_trim_left
 (const ftb_str_t src)
 {
     ftb_error_ret(!src, NULL);
     u32 start, end;
-    ftb_str_t trimmed = NULL;
-    if(!__ftb_str_trim_bounds(src, &start, &end)) return 0;
+    if(!__ftb_str_trim_bounds(src, &start, &end)) return false;
     u32 count = ftb_da_count(src);
-    ftb_ctx_t* ctx = ftb_da_ctx(src);
     if (count > start) {
-        ftb_da_reserve(ctx,trimmed,count-start + 1);
-        ftb_da_appends(ctx,trimmed,&src[start],count - start);
+        memmove(src,&src[start],count - start);
+        ftb_da_set_count(src,count - start);
     }
-    return trimmed;
+    return true;
 }
 
-FTBDEF ftb_str_t ftb_str_trim_right
+FTBDEF bool ftb_str_trim_right
 (const ftb_str_t src)
 {
     ftb_error_ret(!src, NULL);
     u32 start, end;
-    ftb_str_t trimmed = NULL;
     if(!__ftb_str_trim_bounds(src, &start, &end)) return false;
-    ftb_ctx_t* ctx = ftb_da_ctx(src);
     if (end > 0) {
-        ftb_da_reserve(ctx,trimmed,end + 1);
-        ftb_da_appends(ctx,trimmed,(char*)src,end);
+        ftb_da_set_count(src,end);
     }
-    return trimmed;
+    return true;
 }
 
-FTBDEF ftb_str_t ftb_str_trim
+FTBDEF bool ftb_str_trim
 (const ftb_str_t src)
 {
     ftb_error_ret(!src, NULL);
     u32 start, end;
-    ftb_str_t trimmed = NULL;
     if(!__ftb_str_trim_bounds(src, &start, &end)) return false;
-    ftb_ctx_t* ctx = ftb_da_ctx(src);
+    ftb_da_set_count(src,0);
     if (end > start) {
-        ftb_da_appends(ctx,trimmed, (char*)src + start, end - start);
+        memmove(src,&src[start],end-start);
+        ftb_da_set_count(src,end-start);
     }
-    return trimmed;
+    return true;
 }
 
 static inline void __ftb_str_append_lowercase
@@ -1557,7 +1570,8 @@ FTBDEF bool ftb_str_cmp_cstr
 static ftb_str_t __ftb_tmp_safe_path
 (const ftb_path_t path)
 {
-    ftb_str_t tmp = ftb_str_trim(path);
+    ftb_str_t tmp = ftb_mem_clone(path);
+    assert(ftb_str_trim(tmp));
     assert(tmp);
     char buf[2] = {0};
     ftb_ctx_t* ctx = ftb_da_ctx(path);
