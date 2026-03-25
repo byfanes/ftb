@@ -117,55 +117,12 @@ typedef uintptr_t   usize;
 /* Calculation for the size is FTB_DA_INIT_CAPACITY*(sizeof(*da)) */
 #endif /* FTB_DA_INIT_CAPACITY */
 
-#ifdef FTB_WERROR
-     #define ftb_error_ret(cond,val)           \
-        do {                                   \
-            if(cond) {                         \
-            printf("A ftb function has failed! \nAborting...\n"); \
-            printf("%s:%d:%s: Function got invalid argumants\n\n",__FILE__,__LINE__,__func__); \
-            abort();}                          \
-        } while(0)
-#else /* FTB_WERROR */
-    #define ftb_error_ret(cond,val) \
-        do { if(cond) {return val;} } while(0)
-#endif /* FTB_WERROR */
-
-
 /* Warning / Error : For all of ftb_da_* macros
  * Dont put expression in macros just assing it to a variable then call it.
  */
 
-#define ftb_da_set_header(da,add,cou,cap,els,ct) \
-    do {                                         \
-        ftb_ptr_header_t* h = ftb_da_header(da); \
-        if(h) {                                  \
-            h->d.addr = (add);                   \
-            h->d.count = (cou);                  \
-            h->d.capacity = (cap);               \
-            h->d.elsize = (els);                 \
-            h->d.ctx = (ct);                     \
-        }                                        \
-    } while(0)
-
-#define ftb_da_header(da) ((da) ? ((ftb_ptr_header_t*)(da) - 1) : 0)
-#define ftb_da_addr(da) ((da) ? (ftb_da_header(da))->d.addr : 0)
-#define ftb_da_count(da) ((da) ? (ftb_da_header(da))->d.count : 0)
-#define ftb_da_capacity(da) ((da) ? ((ftb_da_header(da))->d.capacity) : 0)
-#define ftb_da_elsize(da) ((da) ? ((ftb_da_header(da))->d.elsize) : 0)
-#define ftb_da_ctx(da) ((da) ? ((ftb_ctx_t*)((ftb_da_header(da))->d.ctx)) : FTB_RAW)
-#define ftb_da_max_count(da) (ftb_da_capacity(da) / ftb_da_elsize(da))
-#define ftb_da_set_count(da,x) do{ (ftb_da_header(da))->d.count = (x);} while(0)
-#define ftb_da_set_capacity(da,x) do{ (ftb_da_header(da))->d.capacity = (x);} while(0)
-#define ftb_da_set_elsize(da,x) do{ (ftb_da_header(da))->d.elsize = (x);} while(0)
-#define ftb_da_set_addr(da,x) do{ (ftb_da_header(da))->d.addr = (x);} while(0)
-#define ftb_da_count_inc(da) ((ftb_da_header(da))->d.count++)
-#define ftb_da_count_sum(da,x) ((ftb_da_header(da))->d.count+=(x))
-#define ftb_da_count_sub(da,x) ((ftb_da_header(da))->d.count-=(x))
-#define ftb_da_count_dec(da) ((ftb_da_header(da))->d.count--)
-#define ftb_da_clamp_id(da,x) FTB_CLAMP((x), 0, (ftb_da_count(da)-1))
 #define ftb_da_foreach(type_ptr, it, da) \
-    for (type_ptr it = (da); (da) != NULL && it < (da) + ftb_da_count(da); ++it)
-#define ftb_da_empty(da) ((da) == NULL || ftb_da_count(da) == 0)
+     for (type_ptr it = (da); (da) != NULL && it < (da) + ftb_da_count(da); ++it)
 #define ftb_da_check_and_add_null(ctx,da)           \
     do {                                            \
         if((da) == NULL) {                          \
@@ -189,40 +146,8 @@ typedef uintptr_t   usize;
  *   ctx -> can be a pointer to context or be null for raw allocation
  *   da -> can be a null pointer or existing da pointer
  */
-#define ftb_da_reserve(ctx,da,amount)                                            \
-    do {                                                                         \
-        ftb_ptr_header_t* header = 0;                                            \
-        if((da) == NULL) {                                                       \
-            usize da_s = (amount > FTB_DA_INIT_CAPACITY)                         \
-            ? amount : FTB_DA_INIT_CAPACITY;                                     \
-            da_s *= sizeof(*(da));                                               \
-            if((ctx) == FTB_RAW)                                                 \
-            {                                                                    \
-                header = FTB_CALLOC(1, da_s + sizeof(ftb_ptr_header_t));         \
-                (da) = (void*)(header + 1);                                      \
-                header->d.addr = 0;                                              \
-            }                                                                    \
-            else                                                                 \
-            { (da) = ftb_mem_zalloc((ctx),da_s); header = ftb_da_header((da)); } \
-            u32 addr = ftb_da_addr(da);                                          \
-            ftb_da_set_header(da,addr,0,da_s,sizeof(*(da)),ctx);                 \
-        } else {                                                                 \
-            usize old_cap = ftb_da_capacity(da);                                 \
-            usize needed = old_cap + amount * sizeof(*(da));                     \
-            usize da_s = old_cap ? old_cap * 2 : needed;                         \
-            if (da_s < needed) da_s = needed;                                    \
-            header = ftb_da_header((da));                                        \
-            if((ctx) == FTB_RAW) {                                               \
-                u32 count = ftb_da_count((da)), cap = ftb_da_capacity((da));     \
-                header = FTB_REALLOC(header,da_s + sizeof(ftb_ptr_header_t));    \
-                assert(header);                                                  \
-                memset((u8*)header + sizeof(ftb_ptr_header_t) + cap,             \
-                0, amount*sizeof(*(da)));                                        \
-                (da) = (void*)(header + 1);                                      \
-                ftb_da_set_header(da,0,count,da_s,sizeof(*(da)),ctx);            \
-            } else { (da) = ftb_mem_realloc((ctx),(da),da_s); }                  \
-        }                                                                        \
-    } while(0)
+#define ftb_da_reserve(ctx,da,amount) \
+do { (da) = __ftb_da_grow((ctx),(da),sizeof(*(da)),amount); } while(0)
 
 /* For ftb_da_append ftb_da_appends macro
  *   items_count -> is in count in da's type which will be added with existing capacity
@@ -243,24 +168,25 @@ typedef uintptr_t   usize;
         ftb_da_count_inc((da));                             \
     } while(0)
 
-#define ftb_da_appends(ctx,da,items,items_count)                                     \
-    do {                                                                             \
-        if((da) == NULL)                                                             \
-        {ftb_da_reserve((ctx),(da),(items_count));}                                  \
-        if(ftb_da_max_count((da)) <= ftb_da_count((da)) + (items_count))             \
-        {ftb_da_reserve((ctx),(da),(items_count));}                                  \
-        memcpy((da) + ftb_da_count(da), (items), (items_count)*ftb_da_elsize((da))); \
-        ftb_da_count_sum(da,items_count);                                            \
-    } while(0)
-
+#define ftb_da_appends(ctx,da,items,items_count) \
+do { (da) = __ftb_da_appends((ctx),(da),(items),(items_count),sizeof(*(da))); } while(0)
+    
 #define FTB_TODO(msg) \
-    do { printf("%s:%d: To be done:%s\n",__FILE__,__LINE__,msg);abort();} while(0)
+do { printf("%s:%d: To be done:%s\n",__FILE__,__LINE__,msg);abort(); } while(0)
+
 #define FTB_UNIMPLEMENTED                                                           \
     do {                                                                            \
         fprintf(stderr,"%s:%d: %s is not implemented!",__FILE__,__LINE__,__func__); \
         abort();                                                                    \
     } while(0);
 
+#define FTB_PANIC                                                           \
+    do {                                                                    \
+        fprintf(stderr,"%s:%d: %s is paniced!",__FILE__,__LINE__,__func__); \
+        abort();                                                            \
+    } while(0);
+    
+    
 #define FTB_MIN(a,b) ((a) < (b) ? (a) : (b))
 #define FTB_MAX(a,b) ((a) > (b) ? (a) : (b))
 #define FTB_CLAMP(x,min,max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
@@ -283,7 +209,6 @@ typedef uintptr_t   usize;
 #define FTB_BIT_CLEAR_MASK(x,mask) ((x) &= ~(mask))
 #define FTB_ALIGN_UP(x,a) (((x)+(a)-1) & ~((a)-1))
 #define FTB_ALIGN_DOWN(x,a) ((x) & ~((a)-1))
-#define FTB_ENUM_TO_STRING(val) #val
 #define FTB_IS_POW2(x) (((x) != 0) && (((x) & ((x) - 1)) == 0))
 #define FTB_OFFSET_OF(type, member) ((usize)&(((type*)0)->member))
 #define FTB_CONTAINER_OF(ptr, type, member) ((type *)((char *)(ptr) - FTB_OFFSET_OF(type, member)))
@@ -383,6 +308,29 @@ typedef struct {
  * Every returned true is functions done succesfuly
  * Every returned false is functions has failed
  */
+
+FTBDEF void* __ftb_da_appends
+(ftb_ctx_t* ctx,void* da,const void* items,u32 items_count,u32 elsize);
+FTBDEF void* __ftb_da_grow(ftb_ctx_t* ctx,void* da,u32 elsize,u32 amount);
+ALLFTBDEF ftb_ptr_header_t* ftb_da_header(const void* da);
+ALLFTBDEF u32 ftb_da_addr(const void* da);
+ALLFTBDEF u32 ftb_da_count(const void* da);
+ALLFTBDEF u32 ftb_da_capacity(const void* da);
+ALLFTBDEF u32 ftb_da_elsize(const void* da);
+ALLFTBDEF ftb_ctx_t* ftb_da_ctx(const void* da);
+ALLFTBDEF u32 ftb_da_max_count(const void* da);
+ALLFTBDEF void ftb_da_set_header
+(const void* da,u32 addr,u32 count,u32 capacity,u32 elsize,ftb_ctx_t* ctx);
+ALLFTBDEF void ftb_da_set_count(const void* da,u32 x);
+ALLFTBDEF void ftb_da_set_capacity(const void* da,u32 x);
+ALLFTBDEF void ftb_da_set_elsize(const void* da,u32 x);
+ALLFTBDEF void ftb_da_set_addr(const void* da,u32 x);
+ALLFTBDEF void ftb_da_count_inc(const void* da);
+ALLFTBDEF void ftb_da_count_dec(const void* da);
+ALLFTBDEF void ftb_da_count_sum(const void* da,u32 x);
+ALLFTBDEF void ftb_da_count_sub(const void* da,u32 x);
+ALLFTBDEF u32 ftb_da_clamp_id(const void* da,u32 x);
+ALLFTBDEF bool ftb_da_is_empty(const void* da);
 
 /* For ftb_mem_alloc ftb_mem_zalloc ftb_mem_realloc function
  *   bytes -> It should not contain the ftb_ptr_header_t size it is automaticly added.
@@ -610,6 +558,38 @@ typedef u8* ftb_path_t;
  */
 typedef u8* ftb_str_t;
 
+/* For ftb_str_starts_with function
+ *   haystack -> First str.Can be null.Which will be checked.
+ *   needle -> Second str.Can be null.
+ *   ret ftb_str_t -> Returns true if both or same (in memory layout) in
+ *                 -> amount bytes is count of 'needle' or null.Otherwise false.
+ */
+FTBDEF bool ftb_str_starts_with(const ftb_str_t haystack,const ftb_str_t needle);
+
+/* For ftb_str_ends_with function
+ *   haystack -> First str.Can be null.Which will be checked.
+ *   needle -> Second str.Can be null.
+ *   ret ftb_str_t -> Returns true if both or same (in memory layout) in
+ *                 -> amount bytes is count of 'needle' or null.Otherwise false.
+ */
+FTBDEF bool ftb_str_ends_with(const ftb_str_t haystack,const ftb_str_t needle);
+
+/* For ftb_str_find function
+ *   haystack -> First str.Can be null.Which will be searched in.
+ *   needle -> Second str.Can be null.
+ *   ret i64 -> Returns index(>= 0) if it has same (in memory layout) in
+ *           -> amount bytes is count of 'needle'.Otherwise -1 including both nulls.
+ */
+FTBDEF i64 ftb_str_find(const ftb_str_t haystack,const ftb_str_t needle);
+
+/* For ftb_str_find function
+ *   haystack -> First str.Can be null.Which will be searched in.
+ *   needle -> Second str.Can be null.
+ *   ret bool -> Returns true if it has same (in memory layout) in
+ *            -> amount bytes is count of 'needle'.Otherwise false including both nulls.
+ */
+FTBDEF bool ftb_str_contains(const ftb_str_t haystack,const ftb_str_t needle);
+
 /* For ftb_str_cmp_cstr function
  *   str -> First str.Can be null.
  *   cstr -> Second str in cstr style.Can be null.
@@ -828,6 +808,120 @@ ALLFTBDEF bool ftb_file_write_cstr
 #ifndef FTB_FIRST_IMPLEMENTATION
 #define FTB_FIRST_IMPLEMENTATION
 
+ALLFTBDEF ftb_ptr_header_t* ftb_da_header
+(const void* da)
+{ return ((da) ? ((ftb_ptr_header_t*)da - 1) : 0); }
+
+ALLFTBDEF u32 ftb_da_addr
+(const void* da)
+{ return ((da) ? ftb_da_header(da)->d.addr : 0); }
+
+ALLFTBDEF u32 ftb_da_count
+(const void* da)
+{ return ((da) ? ftb_da_header(da)->d.count : 0); }
+
+ALLFTBDEF u32 ftb_da_capacity
+(const void* da)
+{ return ((da) ? ftb_da_header(da)->d.capacity : 0); }
+
+ALLFTBDEF u32 ftb_da_elsize
+(const void* da)
+{ return ((da) ? ftb_da_header(da)->d.elsize : 0); }
+
+ALLFTBDEF ftb_ctx_t* ftb_da_ctx
+(const void* da)
+{ return ((da) ? ((ftb_ctx_t*)((ftb_da_header(da))->d.ctx)) : FTB_RAW); }
+
+ALLFTBDEF u32 ftb_da_max_count
+(const void* da)
+{ return (ftb_da_capacity(da) / ftb_da_elsize(da)); }
+
+ALLFTBDEF bool ftb_da_is_empty
+(const void* da)
+{ return (!da || (ftb_da_count(da) == 0)); }
+
+ALLFTBDEF void ftb_da_set_header
+(const void* da,u32 addr,u32 count,u32 capacity,u32 elsize,ftb_ctx_t* ctx)
+{
+    if(!da) return;
+    ftb_ptr_header_t* h = ftb_da_header(da);
+    h->d.addr = addr;
+    h->d.count = count;
+    h->d.capacity = capacity;
+    h->d.elsize = elsize;
+    h->d.ctx = ctx;
+}
+
+ALLFTBDEF void ftb_da_set_count
+(const void* da,u32 x)
+{ if(da) ftb_da_header(da)->d.count = x; }
+
+ALLFTBDEF void ftb_da_set_capacity
+(const void* da,u32 x)
+{ if(da) ftb_da_header(da)->d.capacity = x; }
+
+ALLFTBDEF void ftb_da_set_elsize
+(const void* da,u32 x)
+{ if(da) ftb_da_header(da)->d.elsize = x; }
+
+ALLFTBDEF void ftb_da_set_addr
+(const void* da,u32 x)
+{ if(da) ftb_da_header(da)->d.addr = x; }
+
+ALLFTBDEF void ftb_da_count_inc
+(const void* da)
+{ ftb_da_count_sum(da,1); }
+
+ALLFTBDEF void ftb_da_count_dec
+(const void* da)
+{ ftb_da_count_sub(da,1); }
+
+ALLFTBDEF void ftb_da_count_sum
+(const void* da,u32 x)
+{ if(da) ftb_da_header(da)->d.count += x; }
+
+ALLFTBDEF void ftb_da_count_sub
+(const void* da,u32 x)
+{ if(da) ftb_da_header(da)->d.count -= x; }
+
+ALLFTBDEF u32 ftb_da_clamp_id
+(const void* da,u32 x)
+{
+    if(!da) return 0;
+    i64 count = ftb_da_count(da);
+    return ((count) ? (FTB_CLAMP((i32)x,0,count-1)) : 0);
+}
+
+FTBDEF void* __ftb_da_appends
+(ftb_ctx_t* ctx,void* da,const void* items,u32 items_count,u32 elsize)
+{
+    if(!da || (ftb_da_max_count(da) <= ftb_da_count(da) + items_count))
+    { da = __ftb_da_grow(ctx,da,elsize,items_count); }
+    memcpy((char*)da + ftb_da_count(da)*elsize,items,items_count*elsize);
+    ftb_da_count_sum(da,items_count);
+    return da;
+}
+
+FTBDEF void* __ftb_da_grow
+(ftb_ctx_t* ctx,void* da,u32 elsize,u32 amount)
+{
+    usize da_s = 0;
+    void* ptr = 0;
+    if(da == NULL) {
+        da_s = FTB_MAX(amount,FTB_DA_INIT_CAPACITY);
+        da_s *= elsize;
+        ptr = ftb_mem_zalloc(ctx,da_s);
+        ftb_da_set_elsize(ptr,elsize);
+        return ptr;
+    }
+    usize old_cap = ftb_da_capacity(da);
+    usize needed = old_cap + amount * elsize;
+    da_s = old_cap ? old_cap * 2 : needed;
+    if (da_s < needed) da_s = needed;
+    ftb_da_set_elsize(da,elsize);
+    return ftb_mem_realloc(ctx,da,da_s);
+}
+
 FTBDEF void* ftb_mem_clone
 (void* ptr)
 {
@@ -911,7 +1005,7 @@ FTBDEF void* ftb_mem_realloc
 (ftb_ctx_t* ctx,void* ptr,usize bytes)
 {
     // Todo:
-    assert(ctx);
+    //assert(ctx);
     if(!bytes && !ptr) { return 0; }
     if(!bytes && ptr) { ftb_mem_free(ptr); return 0; }
     if(!ptr && bytes) { return ftb_mem_zalloc(ctx,bytes); }
@@ -993,7 +1087,7 @@ FTBDEF bool ftb_test_run
     {
         u64 usec = 0;
         u64 end_usec = 0;
-        ftb_error_ret((!tests[i].func),false);
+        if(!tests[i].func) return false;
         usec = ftb_time_now_us();
         tests[i].res = tests[i].func();
         end_usec = ftb_time_now_us();
@@ -1011,7 +1105,7 @@ FTBDEF bool ftb_test_report
 FTBDEF bool ftb_test_report_redirect
 (ftb_test_t* tests,FILE* fptr)
 {
-    ftb_error_ret((!fptr || !tests),false);
+    if(!fptr || !tests) return false;
     if(!ftb_da_count(tests)) return true;
     u32 i = 0;
     fprintf(fptr,"\n-----Results of a test group-----\n");
@@ -1170,7 +1264,7 @@ FTBDEF bool ftb_log_debug
 FTBDEF bool ftb_log_set_timestap
 (ftb_ctx_t* ctx,bool x)
 {
-    ftb_error_ret(!ctx,false);
+    if(!ctx) return false;
     ctx->logger.timestaps = x;
     return true;
 }
@@ -1178,7 +1272,7 @@ FTBDEF bool ftb_log_set_timestap
 FTBDEF bool ftb_log_toogle_timestap
 (ftb_ctx_t* ctx)
 {
-    ftb_error_ret(!ctx,false);
+    if(!ctx) return false;
     ctx->logger.timestaps = !ctx->logger.timestaps;
     return true;
 }
@@ -1186,7 +1280,7 @@ FTBDEF bool ftb_log_toogle_timestap
 FTBDEF bool ftb_log_set_log_file_path
 (ftb_ctx_t* ctx,const char* path)
 {
-    ftb_error_ret((!ctx || !path),false);
+    if(!ctx || !path) return false;
     FILE* fptr = 0;
     fptr = fopen(path,"w");
     if(!fptr) return false;
@@ -1198,7 +1292,7 @@ FTBDEF bool ftb_log_set_log_file_path
 FTBDEF bool ftb_log_set_log_file
 (ftb_ctx_t* ctx,FILE* file)
 {
-    ftb_error_ret((!ctx || !file),false);
+    if(!ctx || !file) return false;
     ctx->logger.log_file = file;
     return true;
 }
@@ -1206,7 +1300,7 @@ FTBDEF bool ftb_log_set_log_file
 FTBDEF bool ftb_log_set_log_level
 (ftb_ctx_t* ctx,ftb_ctx_log_level_t level)
 {
-    ftb_error_ret(!ctx,false);
+    if(!ctx) return false;
     if(level >= ftb_log_level_all && level <= ftb_log_level_error) {
         ctx->logger.level = level;
         return true;
@@ -1315,7 +1409,7 @@ static inline bool __ftb_str_trim_bounds
 FTBDEF bool ftb_str_trim_left
 (const ftb_str_t src)
 {
-    ftb_error_ret(!src, NULL);
+    if(!src) return false;
     u32 start, end;
     if(!__ftb_str_trim_bounds(src, &start, &end)) return false;
     u32 count = ftb_da_count(src);
@@ -1329,7 +1423,7 @@ FTBDEF bool ftb_str_trim_left
 FTBDEF bool ftb_str_trim_right
 (const ftb_str_t src)
 {
-    ftb_error_ret(!src, NULL);
+    if(!src) return false;
     u32 start, end;
     if(!__ftb_str_trim_bounds(src, &start, &end)) return false;
     if (end > 0) {
@@ -1341,7 +1435,7 @@ FTBDEF bool ftb_str_trim_right
 FTBDEF bool ftb_str_trim
 (const ftb_str_t src)
 {
-    ftb_error_ret(!src, NULL);
+    if(!src) return false;
     u32 start, end;
     if(!__ftb_str_trim_bounds(src, &start, &end)) return false;
     ftb_da_set_count(src,0);
@@ -1452,8 +1546,8 @@ static inline void __ftb_str_append_uppercase
 FTBDEF ftb_str_t ftb_str_uppercase
 (const ftb_str_t src)
 {
-    ftb_error_ret(!src, NULL);
-    ftb_str_t upper_str = NULL;
+    if(!src) return 0;
+    ftb_str_t upper_str = 0;
     u32 count = ftb_da_count(src);
     ftb_ctx_t* ctx = ftb_da_ctx(src);
     for (u32 i = 0; i < count; )
@@ -1469,8 +1563,8 @@ FTBDEF ftb_str_t ftb_str_uppercase
 FTBDEF ftb_str_t ftb_str_lowercase
 (const ftb_str_t src)
 {
-    ftb_error_ret(!src, NULL);
-    ftb_str_t lower_str = NULL;
+    if(!src) return 0;
+    ftb_str_t lower_str = 0;
     u32 count = ftb_da_count(src);
     ftb_ctx_t* ctx = ftb_da_ctx(src);
     for (u32 i = 0; i < count; )
@@ -1486,7 +1580,7 @@ FTBDEF ftb_str_t ftb_str_lowercase
 FTBDEF bool ftb_str_clear
 (const ftb_str_t str)
 {
-    ftb_error_ret(!str,false);
+    if(!str) return false;
     memset(str,0,ftb_da_count(str));
     ftb_da_set_count(str,0);
     return true;
@@ -1543,6 +1637,53 @@ FTBDEF bool ftb_str_check_valid
     return (ftb_str_get_char_count(str) != -1);
 }
 
+FTBDEF bool ftb_str_starts_with
+(const ftb_str_t haystack,const ftb_str_t needle)
+{
+    if(!haystack && !needle) return true;
+    if(haystack && !needle) return false;
+    if(!haystack && needle) return false;
+    u32 c1 = ftb_da_count(haystack);
+    u32 c2 = ftb_da_count(needle);
+    if(c2 > c1) return false;
+    return memcmp(haystack,needle,c2) == 0;
+}
+
+FTBDEF bool ftb_str_contains
+(const ftb_str_t haystack,const ftb_str_t needle)
+{
+    return (ftb_str_find(haystack,needle) != -1);
+}
+
+FTBDEF i64 ftb_str_find
+(const ftb_str_t haystack,const ftb_str_t needle)
+{
+    if(!haystack && !needle) return -1;
+    if(haystack && !needle) return -1;
+    if(!haystack && needle) return -1;
+    u32 c1 = ftb_da_count(haystack);
+    u32 c2 = ftb_da_count(needle);
+    if(c2 > c1) return -1;
+    for(u32 i = 0;i < c1-c2;++i)
+    {
+        if(memcmp(&haystack[i],needle,c2) == 0)
+        {return i;}
+    }
+    return -1;
+}
+
+FTBDEF bool ftb_str_ends_with
+(const ftb_str_t haystack,const ftb_str_t needle)
+{
+    if(!haystack && !needle) return true;
+    if(haystack && !needle) return false;
+    if(!haystack && needle) return false;
+    u32 c1 = ftb_da_count(haystack);
+    u32 c2 = ftb_da_count(needle);
+    if(c2 > c1) return false;
+    return memcmp(&haystack[c1-1-c2],needle,c2) == 0;
+}
+
 FTBDEF bool ftb_str_cmp
 (const ftb_str_t str1,const ftb_str_t str2)
 {
@@ -1585,7 +1726,7 @@ do { bool ok = (cond);ftb_mem_free((tmp)); return ok;} while(0)
 FTBDEF bool ftb_file_exists
 (const ftb_path_t path)
 {
-    ftb_error_ret(!path, false);
+    if(!path) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     DWORD attr = GetFileAttributesA(tmp);
@@ -1598,10 +1739,10 @@ FTBDEF bool ftb_file_exists
 FTBDEF bool ftb_file_copy
 (const ftb_path_t from,const ftb_path_t to)
 {
-    ftb_error_ret((!from || !to), false);
+    if(!from || !to) return false;
     bool ok = true;
     ftb_bytes_t data = ftb_file_read(from);
-    if(!data) { return false;}
+    if(!data) return false;
     ok = ftb_file_write(to,data);
     ftb_mem_free(data);
     return ok;
@@ -1610,7 +1751,7 @@ FTBDEF bool ftb_file_copy
 FTBDEF bool ftb_dir_exists
 (const ftb_path_t path)
 {
-    ftb_error_ret(!path, false);
+    if(!path) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     DWORD attr = GetFileAttributesA(tmp);
@@ -1624,7 +1765,7 @@ FTBDEF bool ftb_dir_exists
 FTBDEF bool ftb_dir_mkdir
 (const ftb_path_t path)
 {
-    ftb_error_ret(!path, false);
+    if(!path) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     __ftb_ret_free(tmp,(_mkdir(tmp)==0 || errno==EEXIST));
@@ -1636,7 +1777,7 @@ FTBDEF bool ftb_dir_mkdir
 FTBDEF bool ftb_dir_mkdir_ifnot_exists
 (const ftb_path_t path)
 {
-    ftb_error_ret(!path, false);
+    if(!path) return false;
     if(!ftb_dir_exists(path)) {
         bool ok = ftb_dir_mkdir(path);
         return ok;
@@ -1647,7 +1788,7 @@ FTBDEF bool ftb_dir_mkdir_ifnot_exists
 FTBDEF bool ftb_file_remove
 (const ftb_path_t path)
 {
-    ftb_error_ret(!path, false);
+    if(!path) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     __ftb_ret_free(tmp,DeleteFileA(tmp));
@@ -1658,7 +1799,7 @@ FTBDEF bool ftb_file_remove
 
 FTBDEF i64 ftb_file_size(const ftb_path_t path)
 {
-    ftb_error_ret(!path, -1);
+    if(!path) return -1;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
     i64 size = -1;
 #if _WIN32
@@ -1679,12 +1820,12 @@ FTBDEF i64 ftb_file_size(const ftb_path_t path)
 FTBDEF ftb_bytes_t ftb_file_read
 (const ftb_path_t path)
 {
-    ftb_error_ret(!path, 0);
+    if(!path) return 0;
     ftb_bytes_t bytes = 0;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
     FILE* fptr = fopen(tmp,"rb");
     ftb_mem_free(tmp);
-    if(!fptr) {return 0;}
+    if(!fptr) return 0;
     fseek(fptr,0,SEEK_END);
     i64 size=ftell(fptr);
     rewind(fptr);
@@ -1696,9 +1837,8 @@ FTBDEF ftb_bytes_t ftb_file_read
     ftb_da_reserve(ctx,bytes,size);
     ftb_da_set_count(bytes,size);
     ftb_da_set_elsize(bytes,sizeof(u8));
-    if(fread(bytes,size,sizeof(u8),fptr) != 1) {
-        bytes = 0;
-    }
+    if(fread(bytes,size,sizeof(u8),fptr) != 1)
+    { bytes = 0; }
     fclose(fptr);
     return bytes;
 }
@@ -1748,7 +1888,7 @@ FTBDEF int __ftb_dir_remove_unlink_cb
 FTBDEF bool ftb_dir_remove
 (const ftb_path_t path)
 {
-    ftb_error_ret(!path,false);
+    if(!path) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     SHFILEOPSTRUCTA file_op = {
@@ -1771,7 +1911,7 @@ FTBDEF bool ftb_dir_remove
 FTBDEF i64 ftb_file_mtime
 (const ftb_path_t path)
 {
-    ftb_error_ret(!path, -1);
+    if(!path) return -1;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     WIN32_FILE_ATTRIBUTE_DATA data;
@@ -1793,11 +1933,11 @@ FTBDEF i64 ftb_file_mtime
 FTBDEF bool ftb_file_write_n
 (const ftb_path_t path,const void* data,size_t size)
 {
-    ftb_error_ret((!path || !data),false);
+    if(!path || !data) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
     FILE* fptr = fopen(tmp,"wb");
     ftb_mem_free(tmp);
-    if(!fptr) {return false;}
+    if(!fptr) return false;
     if(size) {
         if(fwrite(data,size,1,fptr) != 1) {
             fclose(fptr);
@@ -1811,7 +1951,7 @@ FTBDEF bool ftb_file_write_n
 FTBDEF bool ftb_dir_list_dir
 (ftb_path_t path,void (*callback)(const char*,bool,void*),void* arg)
 {
-    ftb_error_ret((!path || !callback),false);
+    if(!path || !callback) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     char search[512];
@@ -1819,7 +1959,7 @@ FTBDEF bool ftb_dir_list_dir
     ftb_mem_free(tmp);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(search,&fd);
-    if(h == INVALID_HANDLE_VALUE) {return false;}
+    if(h == INVALID_HANDLE_VALUE) return false;
     do {
         if(strcmp(fd.cFileName,".") && strcmp(fd.cFileName,".."))
         {callback(fd.cFileName,(fd.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0,arg);}
@@ -1828,7 +1968,7 @@ FTBDEF bool ftb_dir_list_dir
 #else
     DIR* d = opendir(tmp);
     ftb_mem_free(tmp);
-    if(!d) {return false;}
+    if(!d) return false;
     struct dirent* e;
     while((e=readdir(d))) {
         if(strcmp(e->d_name,".") && strcmp(e->d_name,".."))
@@ -1842,7 +1982,7 @@ FTBDEF bool ftb_dir_list_dir
 FTBDEF bool ftb_path_is_file
 (ftb_path_t path)
 {
-    ftb_error_ret(!path,false);
+    if(!path) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     DWORD attrs = GetFileAttributesA(tmp);
@@ -1856,7 +1996,7 @@ FTBDEF bool ftb_path_is_file
 FTBDEF bool ftb_path_is_dir
 (ftb_path_t path)
 {
-    ftb_error_ret(!path,false);
+    if(!path) return false;
     char* tmp = (char*)__ftb_tmp_safe_path(path);
 #ifdef _WIN32
     DWORD attrs = GetFileAttributesA(tmp);
