@@ -6,18 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef _WIN32
-#define PSEP "\\"
-#else
-#define PSEP "/"
-#endif
-
-/*
- * ==========================================
- * MEMORY TESTS
- * ==========================================
- */
-
 bool test_memory_alloc_and_free(void) {
     ftb_ctx_t ctx = {0};
     ftb_mem_set_mark(&ctx);
@@ -144,17 +132,10 @@ bool test_memory_zalloc_large(void) {
     ftb_test_result(true);
 }
 
-/*
- * ==========================================
- * LOGGING TESTS
- * ==========================================
- */
-
 bool test_logger(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t log_file = 0;
     ftb_da_append_cstr(&ctx,log_file,"test_ftb_log.txt");
-    ftb_da_add_shadow_null(&ctx,log_file);
     ftb_test_assert(ftb_log_set_log_file_path(&ctx, (char*)log_file), "Set log file path");
 
     ftb_log_set_log_level(&ctx, ftb_log_level_info);
@@ -170,12 +151,6 @@ bool test_logger(void) {
     ftb_test_result(true);
 }
 
-/*
- * ==========================================
- * TIME TESTS
- * ==========================================
- */
-
 bool test_time_sleep(void) {
     u64 start = ftb_time_now_ms();
     ftb_time_sleep_ms(30);
@@ -184,12 +159,6 @@ bool test_time_sleep(void) {
     ftb_test_assert(end - start <= 45, "Sleep duration should be at least ~30ms");
     ftb_test_result(true);
 }
-
-/*
- * ==========================================
- * SCOPE TESTS
- * ==========================================
- */
 
 bool test_scoped_ctx(void) {
     ftb_scoped_ctx {
@@ -202,12 +171,6 @@ bool test_scoped_ctx(void) {
      */
     ftb_test_result(true);
 }
-
-/*
- * ==========================================
- * FILE I/O AND DIR TESTS
- * ==========================================
- */
 
 bool test_file_io(void) {
     ftb_ctx_t ctx = {0};
@@ -291,8 +254,8 @@ bool test_dir_list(void) {
     ftb_path_t test_file2 = 0;
     ftb_scoped_ctx {
         ftb_da_append_cstr(pctx,test_dir,"test_ftb_list_dir");
-        ftb_da_append_cstr(pctx,test_file1,"test_ftb_list_dir" PSEP "f1.txt");
-        ftb_da_append_cstr(pctx,test_file2,"test_ftb_list_dir" PSEP "f2.txt");
+        ftb_da_append_cstr(pctx,test_file1,"test_ftb_list_dir" FTB_SEP "f1.txt");
+        ftb_da_append_cstr(pctx,test_file2,"test_ftb_list_dir" FTB_SEP "f2.txt");
         ftb_dir_mkdir(test_dir);
 
         ftb_file_write_cstr(test_file1, "1");
@@ -309,12 +272,6 @@ bool test_dir_list(void) {
     }
     ftb_test_result(true);
 }
-
-/*
- * ==========================================
- * DYNAMIC ARRAY TESTS
- * ==========================================
- */
 
 bool test_raw_da_macros(void) {
     int* arr = NULL;
@@ -407,11 +364,6 @@ bool test_da_foreach(void) {
     ftb_test_result(true);
 }
 
-/*
- * ==========================================
- * MACROS & MATH TESTS
- * ==========================================
- */
 bool test_math_macros(void) {
     ftb_test_assert(FTB_MIN(5, 10) == 5, "FTB_MIN");
     ftb_test_assert(FTB_MAX(5, 10) == 10, "FTB_MAX");
@@ -473,11 +425,6 @@ bool test_struct_macros(void) {
     ftb_test_result(true);
 }
 
-/*
- * ==========================================
- * MEMORY & LOGGING EDGE CASES
- * ==========================================
- */
 bool test_mem_realloc_to_zero(void) {
     ftb_ctx_t ctx = {0};
     void* ptr = ftb_mem_alloc(&ctx, 64);
@@ -502,11 +449,6 @@ bool test_logger_toggles(void) {
     ftb_test_result(true);
 }
 
-/*
- * ==========================================
- * TIME RESOLUTION TESTS
- * ==========================================
- */
 bool test_time_resolution(void) {
     u64 t_us = ftb_time_now_us();
     f64 t_sec = ftb_time_now_sec();
@@ -516,12 +458,6 @@ bool test_time_resolution(void) {
 
     ftb_test_result(true);
 }
-
-/*
- * ==========================================
- * UTF-8 VALIDATION TESTS
- * ==========================================
- */
 
 bool test_str_valid(void) {
     ftb_str_t str = NULL;
@@ -817,7 +753,6 @@ bool test_str_trim_utf8(void) {
 
     ftb_str_t trim3 = ftb_mem_clone(src);
     ftb_str_trim(trim3);
-    ftb_da_add_shadow_null(FTB_RAW,trim3);
     ftb_test_assert(ftb_da_count(trim3) == 0,
          "Trimming an all-space string returns empty string");
 
@@ -921,12 +856,94 @@ bool test_str_capacity_and_length(void) {
     ftb_test_result(true);
 }
 
+bool test_path_basename(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_path_t p1 = 0;
+    ftb_path_t p2 = 0;
 
-/*
- * ==========================================
- * MAIN ENTRY POINT
- * ==========================================
- */
+    ftb_da_append_cstr(&ctx,p1,"dir" FTB_SEP "file.txt");
+    ftb_da_append_cstr(&ctx,p2,"file.txt");
+
+    ftb_path_t nor = ftb_path_basename(p1);
+    ftb_test_assert(nor, "basename normal");
+    ftb_test_assert(ftb_str_cmp_cstr(nor, "file.txt"), "basename normal match");
+
+    ftb_path_t nodir = ftb_path_basename(p2);
+    ftb_test_assert(nodir, "basename no dir");
+    ftb_test_assert(ftb_str_cmp_cstr(nodir, "file.txt"), "basename no dir match");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_path_dirname(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_path_t out = 0;
+    ftb_path_t p1 = 0;
+
+    ftb_da_append_cstr(&ctx,p1,"dir" FTB_SEP "file.txt");
+    out = ftb_path_dirname(p1);
+    ftb_test_assert(out, "dirname normal");
+    ftb_test_assert(ftb_str_cmp_cstr(out, "dir"), "dirname normal match");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_path_stem(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_path_t p1 = 0;
+    ftb_path_t p2 = 0;
+    ftb_path_t p3 = 0;
+    ftb_path_t out = 0;
+
+    ftb_da_append_cstr(&ctx,p1,"dir" FTB_SEP "file.txt");
+    ftb_da_append_cstr(&ctx,p2,"archive.tar.gz");
+    ftb_da_append_cstr(&ctx,p3,"dir" FTB_SEP "file");
+
+    out = ftb_path_stem(p1);
+    ftb_test_assert(out, "stem normal");
+    ftb_test_assert(ftb_str_cmp_cstr(out, "file"), "stem normal match");
+
+    out = ftb_path_stem(p2);
+    ftb_test_assert(out, "stem double ext");
+    ftb_test_assert(ftb_str_cmp_cstr(out, "archive.tar"), "stem double ext match");
+
+    out = ftb_path_stem(p3);
+    ftb_test_assert(out, "stem no ext");
+    ftb_test_assert(ftb_str_cmp_cstr(out, "file"), "stem no ext match");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_path_rename_and_cwd(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_path_t old_name = 0;
+    ftb_path_t new_name = 0;
+    ftb_da_append_cstr(&ctx,old_name,"ftb_old_name.txt");
+    ftb_da_append_cstr(&ctx,new_name,"ftb_new_name.txt");
+
+    /* Test rename */
+    ftb_file_write_cstr(old_name, "rename me");
+    ftb_test_assert(ftb_path_rename(old_name, new_name),
+        "Rename file success");
+    ftb_test_assert(!ftb_file_exists(old_name), "Old file should no longer exist");
+    ftb_test_assert(ftb_file_exists(new_name), "New file should exist");
+    ftb_file_remove(new_name);
+
+    /* Test CWD changing */
+    ftb_path_t current_dir = ftb_path_cwd_get(&ctx);
+    ftb_path_t old_dir = 0;
+    ftb_da_append_cstr(&ctx,old_dir,"..");
+    ftb_test_assert(current_dir, "Get CWD");
+
+    ftb_test_assert(ftb_path_cwd_set(old_dir), "Change CWD to parent directory");
+    ftb_test_assert(ftb_path_cwd_set(current_dir), "Restore original CWD");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
 
 int main(void)
 {
@@ -981,11 +998,12 @@ int main(void)
     ftb_test_add(tests, test_da_foreach);
 
     /* --- Path Tests --- */
-    #if 0
     ftb_test_add(tests, test_path_basename);
     ftb_test_add(tests, test_path_dirname);
-    ftb_test_add(tests, test_path_extension);
     ftb_test_add(tests, test_path_stem);
+    ftb_test_add(tests, test_path_rename_and_cwd);
+    #if 0
+    ftb_test_add(tests, test_path_extension);
     ftb_test_add(tests, test_path_managed_wrappers);
     ftb_test_add(tests, test_path_dirname_cstr);
     ftb_test_add(tests, test_path_wrappers);
