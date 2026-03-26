@@ -136,7 +136,7 @@ bool test_logger(void) {
     ftb_ctx_t ctx = {0};
     ftb_path_t log_file = 0;
     ftb_da_append_cstr(&ctx,log_file,"test_ftb_log.txt");
-    ftb_test_assert(ftb_log_set_log_file_path(&ctx, (char*)log_file), "Set log file path");
+    ftb_test_assert(ftb_log_set_log_file_path(&ctx, log_file), "Set log file path");
 
     ftb_log_set_log_level(&ctx, ftb_log_level_info);
     ftb_test_assert(ftb_log_info(&ctx, "This is an info log"), "Log info");
@@ -926,8 +926,7 @@ bool test_path_rename_and_cwd(void) {
 
     /* Test rename */
     ftb_file_write_cstr(old_name, "rename me");
-    ftb_test_assert(ftb_path_rename(old_name, new_name),
-        "Rename file success");
+    ftb_test_assert(ftb_path_rename(old_name, new_name), "Rename file success");
     ftb_test_assert(!ftb_file_exists(old_name), "Old file should no longer exist");
     ftb_test_assert(ftb_file_exists(new_name), "New file should exist");
     ftb_file_remove(new_name);
@@ -940,6 +939,85 @@ bool test_path_rename_and_cwd(void) {
 
     ftb_test_assert(ftb_path_cwd_set(old_dir), "Change CWD to parent directory");
     ftb_test_assert(ftb_path_cwd_set(current_dir), "Restore original CWD");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_path_with_new_extension(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_path_t out = 0;
+    ftb_path_t p1 = 0;
+    ftb_path_t ext = 0;
+    ftb_path_t p2 = 0;
+    ftb_path_t ext2 = 0;
+
+    ftb_da_append_cstr(&ctx,p1,"file.txt");
+    ftb_da_append_cstr(&ctx,ext,".md");
+    ftb_da_append_cstr(&ctx,p2,"archive");
+    ftb_da_append_cstr(&ctx,ext2,"tar.gz");
+
+    out = ftb_path_with_new_extension(p1, ext);
+    ftb_test_assert(out, "replace ext");
+    ftb_test_assert(ftb_str_cmp_cstr(out, "file.md"), "replace ext match");
+
+    out = ftb_path_with_new_extension(p2, ext2);
+    ftb_test_assert(out, "add ext");
+    ftb_test_assert(ftb_str_cmp_cstr(out, "archive.tar.gz"), "add ext match");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_path_info(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_path_t abs_p = 0;
+    ftb_path_t rel_p = 0;
+    ftb_da_append_cstr(&ctx,abs_p,FTB_SEP "usr" FTB_SEP "bin" FTB_SEP "gcc");
+    ftb_da_append_cstr(&ctx,rel_p,"src" FTB_SEP "main.c");
+
+    ftb_test_assert(ftb_path_is_absolute(abs_p), "is absolute true");
+    ftb_test_assert(!ftb_path_is_absolute(rel_p), "is absolute false");
+
+    ftb_test_assert(!ftb_path_is_relative(abs_p), "is relative false");
+    ftb_test_assert(ftb_path_is_relative(rel_p), "is relative true");
+
+    ftb_test_assert(ftb_path_has_extension(rel_p), "has extension true");
+    ftb_test_assert(!ftb_path_has_extension(abs_p), "has extension false");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_path_fs_operations(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_path_t out = 0;
+    out = ftb_path_cwd_get(&ctx);
+    ftb_test_assert(out, "get cwd");
+    ftb_test_assert(ftb_da_count(out) > 0, "cwd string populated");
+
+    ftb_path_t current_dir = 0;
+    ftb_da_append_cstr(&ctx,current_dir,".");
+    ftb_test_assert(ftb_path_exists(current_dir), "cwd exists");
+    ftb_test_assert(ftb_path_is_dir(current_dir), "cwd is dir");
+    ftb_test_assert(!ftb_path_is_file(current_dir), "cwd is not a regular file");
+
+    out = ftb_path_absolute(current_dir);
+    ftb_test_assert(out, "resolve abs path");
+    ftb_test_assert(ftb_path_is_absolute(out), "resolved path is absolute");
+
+    ftb_mem_delete_ctx(&ctx);
+    ftb_test_result(true);
+}
+
+bool test_str_format(void) {
+    ftb_ctx_t ctx = {0};
+    ftb_mem_set_mark(&ctx);
+
+    ftb_str_t s = ftb_str_format(&ctx, "Hello %d %s", 42, "World");
+    ftb_test_assert(s != NULL, "str_printf created string");
+
+    ftb_test_assert(ftb_str_cmp_cstr(s, "Hello 42 World"), "str_printf content matches");
 
     ftb_mem_delete_ctx(&ctx);
     ftb_test_result(true);
@@ -972,6 +1050,7 @@ int main(void)
     ftb_test_add(tests, test_str_append_loop);
     ftb_test_add(tests, test_str_case_symbols);
     ftb_test_add(tests, test_str_capacity_and_length);
+    ftb_test_add(tests, test_str_format);
 
     #if 0
     ftb_test_add(tests, test_str_starts_ends);
@@ -986,9 +1065,6 @@ int main(void)
     ftb_test_add(tests, test_str_find_str_advanced);
     ftb_test_add(tests, test_str_remove_range_edge_cases);
     ftb_test_add(tests, test_str_null_handling);
-    #ifdef __GNUC__
-    ftb_test_add(tests, test_str_printf);
-    #endif
     #endif
 
     /* --- Dynamic Array Tests --- */
@@ -1002,6 +1078,10 @@ int main(void)
     ftb_test_add(tests, test_path_dirname);
     ftb_test_add(tests, test_path_stem);
     ftb_test_add(tests, test_path_rename_and_cwd);
+    ftb_test_add(tests, test_path_with_new_extension);
+    ftb_test_add(tests, test_path_info);
+    ftb_test_add(tests, test_path_fs_operations);
+
     #if 0
     ftb_test_add(tests, test_path_extension);
     ftb_test_add(tests, test_path_managed_wrappers);
@@ -1009,9 +1089,6 @@ int main(void)
     ftb_test_add(tests, test_path_wrappers);
     ftb_test_add(tests, test_path_join_cstr);
     ftb_test_add(tests, test_path_normalize_cstr);
-    ftb_test_add(tests, test_path_with_extension_cstr);
-    ftb_test_add(tests, test_path_info_cstr);
-    ftb_test_add(tests, test_path_fs_operations);
     #endif
 
     /* File I/O & Directory Tests */
@@ -1030,7 +1107,6 @@ int main(void)
     ftb_test_add(tests, test_math_macros);
     ftb_test_add(tests, test_bit_macros);
     ftb_test_add(tests, test_struct_macros);
-    //ftb_test_add(tests, test_path_rename_and_cwd);
     ftb_test_add(tests, test_mem_realloc_to_zero);
     ftb_test_add(tests, test_logger_toggles);
     ftb_test_add(tests, test_time_resolution);
